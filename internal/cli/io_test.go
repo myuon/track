@@ -10,7 +10,7 @@ import (
 
 func TestCSVRoundTrip(t *testing.T) {
 	items := []issue.Item{{
-		ID:         "I-000001",
+		ID:         "TRK-1",
 		Title:      "A",
 		Status:     issue.StatusTodo,
 		Priority:   "p1",

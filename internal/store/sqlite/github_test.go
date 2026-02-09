@@ -16,11 +16,11 @@ func TestUpsertAndGetGitHubLink(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 
-	if err := store.UpsertGitHubLink(ctx, "I-000001", "123", "owner/repo"); err != nil {
+	if err := store.UpsertGitHubLink(ctx, "TRK-1", "123", "owner/repo"); err != nil {
 		t.Fatalf("UpsertGitHubLink() error: %v", err)
 	}
 
-	link, err := store.GetGitHubLink(ctx, "I-000001")
+	link, err := store.GetGitHubLink(ctx, "TRK-1")
 	if err != nil {
 		t.Fatalf("GetGitHubLink() error: %v", err)
 	}

@@ -27,7 +27,7 @@ func TestRunEventExecutesHook(t *testing.T) {
 		t.Fatalf("add hook: %v", err)
 	}
 
-	if err := RunEvent(ctx, store, IssueCompleted, "I-000001"); err != nil {
+	if err := RunEvent(ctx, store, IssueCompleted, "TRK-1"); err != nil {
 		t.Fatalf("run event: %v", err)
 	}
 
@@ -35,7 +35,7 @@ func TestRunEventExecutesHook(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read hook output: %v", err)
 	}
-	if !strings.Contains(string(raw), "issue.completed:I-000001") {
+	if !strings.Contains(string(raw), "issue.completed:TRK-1") {
 		t.Fatalf("unexpected hook output: %q", string(raw))
 	}
 }

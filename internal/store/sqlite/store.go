@@ -11,7 +11,8 @@ import (
 )
 
 const (
-	driverName = "sqlite"
+	driverName    = "sqlite"
+	issueIDPrefix = "TRK"
 )
 
 type Store struct {
@@ -131,7 +132,7 @@ func (s *Store) NextIssueID(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("commit next issue number: %w", err)
 	}
 
-	return fmt.Sprintf("I-%06d", n), nil
+	return fmt.Sprintf("%s-%d", issueIDPrefix, n), nil
 }
 
 func (s *Store) Ping(ctx context.Context) error {

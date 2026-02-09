@@ -62,11 +62,11 @@ export PATH="$(go env GOPATH)/bin:$PATH"
 ```bash
 ./track new "Add login page" --label ready --label backend --priority p1
 ./track list --status todo --sort priority
-./track set I-000001 --status in_progress
-./track label attach I-000001 blocked needs-refine
-./track label detach I-000001 blocked
-./track next I-000001 "Implement UI + validation"
-./track done I-000001
+./track set TRK-1 --status in_progress
+./track label attach TRK-1 blocked needs-refine
+./track label detach TRK-1 blocked
+./track next TRK-1 "Implement UI + validation"
+./track done TRK-1
 ```
 
 ## Config

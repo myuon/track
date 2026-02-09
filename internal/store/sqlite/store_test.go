@@ -48,10 +48,10 @@ func TestNextIssueIDSequence(t *testing.T) {
 		t.Fatalf("NextIssueID #2 error: %v", err)
 	}
 
-	if id1 != "I-000001" {
-		t.Fatalf("id1 = %q, want I-000001", id1)
+	if id1 != "TRK-1" {
+		t.Fatalf("id1 = %q, want TRK-1", id1)
 	}
-	if id2 != "I-000002" {
-		t.Fatalf("id2 = %q, want I-000002", id2)
+	if id2 != "TRK-2" {
+		t.Fatalf("id2 = %q, want TRK-2", id2)
 	}
 }
