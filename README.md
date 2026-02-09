@@ -83,12 +83,10 @@ This repository includes agent skills for operating `track` workflows:
 
 ### Install the skill
 
-Install into your Codex skills directory:
+Install from this repository:
 
 ```bash
-mkdir -p "$CODEX_HOME/skills"
-cp -R skills/track-issue-flow "$CODEX_HOME/skills/"
-cp -R skills/track-dev-cycle "$CODEX_HOME/skills/"
+npx skills add myuon/track
 ```
 
 ### Use the skill
