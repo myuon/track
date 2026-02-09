@@ -6,6 +6,9 @@ func TestValidateStatusAndDue(t *testing.T) {
 	if err := ValidateStatus("todo"); err != nil {
 		t.Fatalf("expected valid status: %v", err)
 	}
+	if err := ValidateStatus("ready"); err != nil {
+		t.Fatalf("expected valid status: %v", err)
+	}
 	if err := ValidateStatus("bad"); err == nil {
 		t.Fatalf("expected invalid status error")
 	}

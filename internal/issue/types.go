@@ -8,6 +8,7 @@ import (
 
 const (
 	StatusTodo       = "todo"
+	StatusReady      = "ready"
 	StatusInProgress = "in_progress"
 	StatusDone       = "done"
 	StatusArchived   = "archived"
@@ -15,6 +16,7 @@ const (
 
 var validStatuses = map[string]struct{}{
 	StatusTodo:       {},
+	StatusReady:      {},
 	StatusInProgress: {},
 	StatusDone:       {},
 	StatusArchived:   {},
