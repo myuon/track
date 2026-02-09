@@ -7,6 +7,7 @@ Track is a local-first, CLI-first issue tracker.
 - Local SQLite storage (`~/.track/track.db`)
 - Issue lifecycle commands:
   - `new`, `list`, `show`, `edit`, `set`
+  - `status add/list/remove` (custom status management)
   - `label attach/detach` (and backward-compatible `label add/rm`)
   - `next`, `done`, `archive`, `reorder`
 - Import/Export:
@@ -16,13 +17,13 @@ Track is a local-first, CLI-first issue tracker.
   - `hook add/list/rm/test`
   - events: `issue.created`, `issue.updated`, `issue.status_changed`, `issue.completed`, `sync.completed`
 - GitHub integration (via `gh` CLI):
-  - `gh link`, `gh status`, `gh watch`
+  - `gh link`, `gh status`, `gh watch`, `gh auto-merge`
 - Optional local Web UI:
   - `ui --port <port> [--open]`
 
 ## Requirements
 
-- Go 1.23+
+- Go 1.24+
 - (`gh` command only if you use GitHub watch/status features)
 
 ## Build
@@ -63,18 +64,22 @@ export PATH="$(go env GOPATH)/bin:$PATH"
 ./track new "Add login page" --label ready --label backend --priority p1
 ./track list --status todo --sort priority
 ./track set TRK-1 --status in_progress
+./track set TRK-1 --next-action "Implement UI + validation"
 ./track label attach TRK-1 blocked needs-refine
 ./track label detach TRK-1 blocked
-./track next TRK-1 "Implement UI + validation"
+./track status add blocked
+./track next
 ./track done TRK-1
 ```
 
 ## Agent Skill
 
-This repository includes an agent skill for operating `track` workflows:
+This repository includes agent skills for operating `track` workflows:
 
-- Skill path: `skills/track-issue-flow`
-- Purpose: help an agent resolve `track` CLI usage and move issues safely from discovery to status updates.
+- `skills/track-issue-flow`
+  - Purpose: help an agent resolve `track` CLI usage and move issues safely from discovery to status updates.
+- `skills/track-dev-cycle`
+  - Purpose: run issue work end-to-end in plan/execution modes with tracker state updates.
 
 ### Install the skill
 
@@ -83,6 +88,7 @@ Install into your Codex skills directory:
 ```bash
 mkdir -p "$CODEX_HOME/skills"
 cp -R skills/track-issue-flow "$CODEX_HOME/skills/"
+cp -R skills/track-dev-cycle "$CODEX_HOME/skills/"
 ```
 
 ### Use the skill
@@ -94,6 +100,7 @@ Typical flow with the skill:
 3. Apply updates with explicit ID-based commands such as:
    - `track set <issue-id> --status in_progress`
    - `track set <issue-id> --priority p2`
+   - `track set <issue-id> --next-action "<text>"`
    - `track done <issue-id>`
 
 Example for a request like "5番を進めたい":
@@ -102,6 +109,7 @@ Example for a request like "5番を進めたい":
 track list
 track show TRK-5
 track set TRK-5 --status in_progress
+track set TRK-5 --next-action "Implement first slice"
 ```
 
 ## Config
