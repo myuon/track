@@ -1,0 +1,4 @@
+interface:
+  display_name: "Track Dev Cycle"
+  short_description: "Plan and execute track issues end-to-end"
+  default_prompt: "Use this skill to run track issue development in plan mode or execution mode for one or more issue numbers."
