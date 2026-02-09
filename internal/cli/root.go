@@ -26,6 +26,9 @@ func newRootCmd() *cobra.Command {
 
 	cmd.AddCommand(newVersionCmd())
 	cmd.AddCommand(newConfigCmd())
+	for _, c := range newIssueCommands() {
+		cmd.AddCommand(c)
+	}
 
 	return cmd
 }
