@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/myuon/track/internal/hooks"
 	"github.com/myuon/track/internal/issue"
 	"github.com/myuon/track/internal/store/sqlite"
 	"github.com/spf13/cobra"
@@ -66,6 +67,9 @@ func newNewCmd() *cobra.Command {
 				return err
 			}
 
+			if err := hooks.RunEvent(ctx, store, hooks.IssueCreated, item.ID); err != nil {
+				return err
+			}
 			fmt.Fprintln(cmd.OutOrStdout(), item.ID)
 			return nil
 		},
@@ -205,8 +209,11 @@ func newEditCmd() *cobra.Command {
 				return fmt.Errorf("no fields to update")
 			}
 
-			_, err = store.UpdateIssue(ctx, args[0], in)
+			updated, err := store.UpdateIssue(ctx, args[0], in)
 			if err != nil {
+				return err
+			}
+			if err := hooks.RunEvent(ctx, store, hooks.IssueUpdated, updated.ID); err != nil {
 				return err
 			}
 			fmt.Fprintln(cmd.OutOrStdout(), "ok")
@@ -267,9 +274,22 @@ func newSetCmd() *cobra.Command {
 				return fmt.Errorf("no fields to update")
 			}
 
-			_, err = store.UpdateIssue(ctx, args[0], in)
+			updated, err := store.UpdateIssue(ctx, args[0], in)
 			if err != nil {
 				return err
+			}
+			if err := hooks.RunEvent(ctx, store, hooks.IssueUpdated, updated.ID); err != nil {
+				return err
+			}
+			if in.Status != nil {
+				if err := hooks.RunEvent(ctx, store, hooks.IssueStatusChange, updated.ID); err != nil {
+					return err
+				}
+				if *in.Status == issue.StatusDone {
+					if err := hooks.RunEvent(ctx, store, hooks.IssueCompleted, updated.ID); err != nil {
+						return err
+					}
+				}
 			}
 			fmt.Fprintln(cmd.OutOrStdout(), "ok")
 			return nil
@@ -300,7 +320,11 @@ func newLabelCmd() *cobra.Command {
 				return err
 			}
 			defer store.Close()
-			if _, err := store.AddLabel(ctx, args[0], args[1]); err != nil {
+			updated, err := store.AddLabel(ctx, args[0], args[1])
+			if err != nil {
+				return err
+			}
+			if err := hooks.RunEvent(ctx, store, hooks.IssueUpdated, updated.ID); err != nil {
 				return err
 			}
 			fmt.Fprintln(cmd.OutOrStdout(), "ok")
@@ -318,7 +342,11 @@ func newLabelCmd() *cobra.Command {
 				return err
 			}
 			defer store.Close()
-			if _, err := store.RemoveLabel(ctx, args[0], args[1]); err != nil {
+			updated, err := store.RemoveLabel(ctx, args[0], args[1])
+			if err != nil {
+				return err
+			}
+			if err := hooks.RunEvent(ctx, store, hooks.IssueUpdated, updated.ID); err != nil {
 				return err
 			}
 			fmt.Fprintln(cmd.OutOrStdout(), "ok")
@@ -340,7 +368,11 @@ func newNextCmd() *cobra.Command {
 				return err
 			}
 			defer store.Close()
-			if _, err := store.SetNextAction(ctx, args[0], args[1]); err != nil {
+			updated, err := store.SetNextAction(ctx, args[0], args[1])
+			if err != nil {
+				return err
+			}
+			if err := hooks.RunEvent(ctx, store, hooks.IssueUpdated, updated.ID); err != nil {
 				return err
 			}
 			fmt.Fprintln(cmd.OutOrStdout(), "ok")
@@ -362,7 +394,17 @@ func newDoneCmd() *cobra.Command {
 			}
 			defer store.Close()
 			status := issue.StatusDone
-			if _, err := store.UpdateIssue(ctx, args[0], sqlite.UpdateIssueInput{Status: &status}); err != nil {
+			updated, err := store.UpdateIssue(ctx, args[0], sqlite.UpdateIssueInput{Status: &status})
+			if err != nil {
+				return err
+			}
+			if err := hooks.RunEvent(ctx, store, hooks.IssueUpdated, updated.ID); err != nil {
+				return err
+			}
+			if err := hooks.RunEvent(ctx, store, hooks.IssueStatusChange, updated.ID); err != nil {
+				return err
+			}
+			if err := hooks.RunEvent(ctx, store, hooks.IssueCompleted, updated.ID); err != nil {
 				return err
 			}
 			fmt.Fprintln(cmd.OutOrStdout(), "ok")
@@ -384,7 +426,14 @@ func newArchiveCmd() *cobra.Command {
 			}
 			defer store.Close()
 			status := issue.StatusArchived
-			if _, err := store.UpdateIssue(ctx, args[0], sqlite.UpdateIssueInput{Status: &status}); err != nil {
+			updated, err := store.UpdateIssue(ctx, args[0], sqlite.UpdateIssueInput{Status: &status})
+			if err != nil {
+				return err
+			}
+			if err := hooks.RunEvent(ctx, store, hooks.IssueUpdated, updated.ID); err != nil {
+				return err
+			}
+			if err := hooks.RunEvent(ctx, store, hooks.IssueStatusChange, updated.ID); err != nil {
 				return err
 			}
 			fmt.Fprintln(cmd.OutOrStdout(), "ok")
@@ -409,6 +458,9 @@ func newReorderCmd() *cobra.Command {
 			}
 			defer store.Close()
 			if err := store.Reorder(ctx, args[0], beforeID, afterID); err != nil {
+				return err
+			}
+			if err := hooks.RunEvent(ctx, store, hooks.IssueUpdated, args[0]); err != nil {
 				return err
 			}
 			fmt.Fprintln(cmd.OutOrStdout(), "ok")

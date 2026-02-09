@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"path/filepath"
-	"time"
 
 	appconfig "github.com/myuon/track/internal/config"
 	_ "modernc.org/sqlite"
@@ -130,19 +129,4 @@ func (s *Store) NextIssueID(ctx context.Context) (string, error) {
 
 func (s *Store) Ping(ctx context.Context) error {
 	return s.db.PingContext(ctx)
-}
-
-func (s *Store) AddHook(ctx context.Context, event, runCmd, cwd string) error {
-	_, err := s.db.ExecContext(
-		ctx,
-		`INSERT INTO hooks(event, run_cmd, cwd, created_at) VALUES(?, ?, ?, ?)`,
-		event,
-		runCmd,
-		cwd,
-		time.Now().UTC().Format(time.RFC3339),
-	)
-	if err != nil {
-		return fmt.Errorf("insert hook: %w", err)
-	}
-	return nil
 }

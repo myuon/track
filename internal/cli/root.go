@@ -32,6 +32,7 @@ func newRootCmd() *cobra.Command {
 	for _, c := range newIOCommands() {
 		cmd.AddCommand(c)
 	}
+	cmd.AddCommand(newHookCmd())
 
 	return cmd
 }
