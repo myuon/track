@@ -274,10 +274,11 @@ func newEditCmd() *cobra.Command {
 
 func newSetCmd() *cobra.Command {
 	var (
-		status   string
-		priority string
-		due      string
-		assignee string
+		status     string
+		priority   string
+		due        string
+		assignee   string
+		nextAction string
 	)
 
 	cmd := &cobra.Command{
@@ -315,7 +316,10 @@ func newSetCmd() *cobra.Command {
 				v := issue.NormalizeAssignee(assignee)
 				in.Assignee = &v
 			}
-			if in.Status == nil && in.Priority == nil && in.Due == nil && in.Assignee == nil {
+			if cmd.Flags().Changed("next-action") {
+				in.NextAction = &nextAction
+			}
+			if in.Status == nil && in.Priority == nil && in.Due == nil && in.Assignee == nil && in.NextAction == nil {
 				return fmt.Errorf("no fields to update")
 			}
 
@@ -345,6 +349,7 @@ func newSetCmd() *cobra.Command {
 	cmd.Flags().StringVar(&priority, "priority", "", "Priority")
 	cmd.Flags().StringVar(&due, "due", "", "Due date")
 	cmd.Flags().StringVar(&assignee, "assignee", "", "Assignee")
+	cmd.Flags().StringVar(&nextAction, "next-action", "", "Next action")
 
 	return cmd
 }
@@ -436,24 +441,34 @@ func newLabelCmd() *cobra.Command {
 
 func newNextCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "next <id> <text>",
-		Short: "Set next action for issue",
-		Args:  cobra.ExactArgs(2),
+		Use:   "next",
+		Short: "Show next actionable issue",
+		Args:  cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) > 0 {
+				fmt.Fprintln(cmd.ErrOrStderr(), "track next no longer sets next action; use: track set <id> --next-action <text>")
+				return fmt.Errorf("unexpected args")
+			}
 			ctx := context.Background()
 			store, err := sqlite.Open(ctx)
 			if err != nil {
 				return err
 			}
 			defer store.Close()
-			updated, err := store.SetNextAction(ctx, args[0], args[1])
+
+			items, err := store.ListIssues(ctx, sqlite.ListFilter{
+				Statuses: []string{issue.StatusTodo, issue.StatusReady},
+				Sort:     "manual",
+			})
 			if err != nil {
 				return err
 			}
-			if err := hooks.RunEvent(ctx, store, hooks.IssueUpdated, updated.ID); err != nil {
-				return err
+			if len(items) == 0 {
+				fmt.Fprintln(cmd.OutOrStdout(), "no actionable issues")
+				return nil
 			}
-			fmt.Fprintln(cmd.OutOrStdout(), "ok")
+			next := items[0]
+			fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\t%s\n", next.ID, next.Priority, next.Title)
 			return nil
 		},
 	}

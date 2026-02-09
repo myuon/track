@@ -225,3 +225,102 @@ func TestNewDefaultsPriorityToNone(t *testing.T) {
 		t.Fatalf("priority = %q, want none", got.Priority)
 	}
 }
+
+func TestSetSupportsNextAction(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TRACK_HOME", tmp)
+
+	ctx := context.Background()
+	store, err := sqlite.Open(ctx)
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	it, err := store.CreateIssue(ctx, issue.Item{
+		Title:    "next action",
+		Status:   issue.StatusTodo,
+		Priority: "none",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue() error: %v", err)
+	}
+
+	cmd := newSetCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{it.ID, "--next-action", "Write tests"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("set command error: %v", err)
+	}
+
+	got, err := store.GetIssue(ctx, it.ID)
+	if err != nil {
+		t.Fatalf("GetIssue() error: %v", err)
+	}
+	if got.NextAction != "Write tests" {
+		t.Fatalf("next_action = %q, want %q", got.NextAction, "Write tests")
+	}
+}
+
+func TestNextShowsTopActionableIssue(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TRACK_HOME", tmp)
+
+	ctx := context.Background()
+	store, err := sqlite.Open(ctx)
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	a, err := store.CreateIssue(ctx, issue.Item{Title: "A", Status: issue.StatusInProgress, Priority: "p1"})
+	if err != nil {
+		t.Fatalf("CreateIssue() A error: %v", err)
+	}
+	_ = a
+	b, err := store.CreateIssue(ctx, issue.Item{Title: "B", Status: issue.StatusTodo, Priority: "none"})
+	if err != nil {
+		t.Fatalf("CreateIssue() B error: %v", err)
+	}
+
+	cmd := newNextCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("next command error: %v", err)
+	}
+
+	line := strings.TrimSpace(out.String())
+	if !strings.HasPrefix(line, b.ID+"\t") {
+		t.Fatalf("expected first actionable issue %s, got: %q", b.ID, line)
+	}
+}
+
+func TestNextShowsNoActionableIssues(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TRACK_HOME", tmp)
+
+	ctx := context.Background()
+	store, err := sqlite.Open(ctx)
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	_, _ = store.CreateIssue(ctx, issue.Item{Title: "done", Status: issue.StatusDone, Priority: "p1"})
+	_, _ = store.CreateIssue(ctx, issue.Item{Title: "archived", Status: issue.StatusArchived, Priority: "p1"})
+
+	cmd := newNextCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("next command error: %v", err)
+	}
+	if strings.TrimSpace(out.String()) != "no actionable issues" {
+		t.Fatalf("unexpected output: %q", out.String())
+	}
+}

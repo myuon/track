@@ -22,12 +22,13 @@ type ListFilter struct {
 }
 
 type UpdateIssueInput struct {
-	Title    *string
-	Body     *string
-	Status   *string
-	Priority *string
-	Due      *string
-	Assignee *string
+	Title      *string
+	Body       *string
+	Status     *string
+	Priority   *string
+	Due        *string
+	Assignee   *string
+	NextAction *string
 }
 
 func (s *Store) CreateIssue(ctx context.Context, item issue.Item) (issue.Item, error) {
@@ -111,13 +112,16 @@ func (s *Store) UpdateIssue(ctx context.Context, id string, in UpdateIssueInput)
 	if in.Assignee != nil {
 		current.Assignee = issue.NormalizeAssignee(*in.Assignee)
 	}
+	if in.NextAction != nil {
+		current.NextAction = strings.TrimSpace(*in.NextAction)
+	}
 
 	current.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 
 	_, err = s.db.ExecContext(
 		ctx,
-		`UPDATE issues SET title=?, status=?, priority=?, assignee=?, due=?, body=?, updated_at=? WHERE id=?`,
-		current.Title, current.Status, current.Priority, nullable(current.Assignee), nullable(current.Due), nullable(current.Body), current.UpdatedAt, id,
+		`UPDATE issues SET title=?, status=?, priority=?, assignee=?, due=?, next_action=?, body=?, updated_at=? WHERE id=?`,
+		current.Title, current.Status, current.Priority, nullable(current.Assignee), nullable(current.Due), nullable(current.NextAction), nullable(current.Body), current.UpdatedAt, id,
 	)
 	if err != nil {
 		return issue.Item{}, fmt.Errorf("update issue: %w", err)
