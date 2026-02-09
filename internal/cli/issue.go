@@ -13,6 +13,17 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const (
+	listIDWidth       = 10
+	listStatusWidth   = 12
+	listPriorityWidth = 10
+	listTitleWidth    = 50
+)
+
+func formatIssueListRow(id, status, priority, title, labels string) string {
+	return fmt.Sprintf("%-*s %-*s %-*s %-*s %s", listIDWidth, id, listStatusWidth, status, listPriorityWidth, priority, listTitleWidth, title, labels)
+}
+
 func newIssueCommands() []*cobra.Command {
 	return []*cobra.Command{
 		newNewCmd(),
@@ -195,8 +206,9 @@ func newListCmd() *cobra.Command {
 			}
 
 			c := newCLIColor(cmd.OutOrStdout())
+			fmt.Fprintln(cmd.OutOrStdout(), formatIssueListRow("ID", "STATUS", "PRIORITY", "TITLE", "LABELS"))
 			for _, it := range items {
-				fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\t%s\t%s\t%s\n", it.ID, c.status(it.Status), c.priority(it.Priority), it.Title, strings.Join(it.Labels, ","))
+				fmt.Fprintln(cmd.OutOrStdout(), formatIssueListRow(it.ID, c.status(it.Status), c.priority(it.Priority), it.Title, strings.Join(it.Labels, ",")))
 			}
 			return nil
 		},
