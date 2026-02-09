@@ -12,7 +12,9 @@ Follow this skill to process one or more issue IDs end-to-end with `track`.
 - Accept mode plus one or more issue IDs.
 - Support both explicit IDs (for example `TRK-12`) and numeric forms (for example `12`).
 - If numeric IDs are provided, resolve to canonical IDs before mutation.
-- Process issues strictly one by one in the order given.
+- When multiple issues are provided, first enumerate the full target issue list and add it to a TODO list (TodoWrite recommended).
+- Process issues strictly one by one from top to bottom of that TODO list.
+- After completing one issue, move to the next issue automatically without waiting for additional user approval.
 
 ## Mode Selection
 
