@@ -49,12 +49,9 @@ func Open(ctx context.Context) (*Store, error) {
 	db.SetConnMaxLifetime(0)
 	db.SetConnMaxIdleTime(0)
 
-	if err := applySQLitePragmas(ctx, db); err != nil {
-		_ = db.Close()
-		return nil, err
-	}
-
-	if err := db.PingContext(ctx); err != nil {
+	if err := withSQLiteRetry(ctx, func() error {
+		return db.PingContext(ctx)
+	}); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("ping sqlite: %w", err)
 	}
@@ -117,7 +114,7 @@ func (s *Store) initSchema(ctx context.Context) error {
 	}
 
 	for _, stmt := range stmts {
-		if err := withBusyRetry(ctx, func() error {
+		if err := withSQLiteRetry(ctx, func() error {
 			_, err := s.db.ExecContext(ctx, stmt)
 			return err
 		}); err != nil {
@@ -130,7 +127,7 @@ func (s *Store) initSchema(ctx context.Context) error {
 
 func (s *Store) NextIssueID(ctx context.Context) (string, error) {
 	var id string
-	err := withBusyRetry(ctx, func() error {
+	err := withSQLiteRetry(ctx, func() error {
 		tx, err := s.db.BeginTx(ctx, nil)
 		if err != nil {
 			return fmt.Errorf("begin tx: %w", err)
@@ -171,7 +168,7 @@ func applySQLitePragmas(ctx context.Context, db *sql.DB) error {
 		`PRAGMA busy_timeout=5000;`,
 	}
 	for _, stmt := range pragmas {
-		if err := withBusyRetry(ctx, func() error {
+		if err := withSQLiteRetry(ctx, func() error {
 			_, err := db.ExecContext(ctx, stmt)
 			return err
 		}); err != nil {
@@ -181,14 +178,14 @@ func applySQLitePragmas(ctx context.Context, db *sql.DB) error {
 	return nil
 }
 
-func withBusyRetry(ctx context.Context, fn func() error) error {
+func withSQLiteRetry(ctx context.Context, fn func() error) error {
 	const maxAttempts = 8
 	baseDelay := 25 * time.Millisecond
 	var lastErr error
 	for i := 0; i < maxAttempts; i++ {
 		if err := fn(); err != nil {
 			lastErr = err
-			if !isSQLiteBusyErr(err) {
+			if !isSQLiteRetryableErr(err) {
 				return err
 			}
 			select {
@@ -203,7 +200,7 @@ func withBusyRetry(ctx context.Context, fn func() error) error {
 	return lastErr
 }
 
-func isSQLiteBusyErr(err error) bool {
+func isSQLiteRetryableErr(err error) bool {
 	if err == nil {
 		return false
 	}
@@ -214,5 +211,6 @@ func isSQLiteBusyErr(err error) bool {
 	return strings.Contains(msg, "database is locked") ||
 		strings.Contains(msg, "database table is locked") ||
 		strings.Contains(msg, "sqlite_busy") ||
-		strings.Contains(msg, "sqlite_locked")
+		strings.Contains(msg, "sqlite_locked") ||
+		strings.Contains(msg, "unable to open database file")
 }

@@ -2,11 +2,13 @@ package sqlite
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/myuon/track/internal/issue"
@@ -30,6 +32,36 @@ func TestOpenCreatesSchema(t *testing.T) {
 
 	if err := store.Ping(ctx); err != nil {
 		t.Fatalf("Ping() error: %v", err)
+	}
+}
+
+func TestIsSQLiteRetryableErr(t *testing.T) {
+	if !isSQLiteRetryableErr(errors.New(`apply pragma "PRAGMA journal_mode=WAL;": unable to open database file (14)`)) {
+		t.Fatalf("unable to open database file should be retryable")
+	}
+	if !isSQLiteRetryableErr(errors.New("database is locked (5) (SQLITE_BUSY)")) {
+		t.Fatalf("SQLITE_BUSY should be retryable")
+	}
+	if isSQLiteRetryableErr(errors.New("syntax error")) {
+		t.Fatalf("non-transient errors should not be retryable")
+	}
+}
+
+func TestWithSQLiteRetryRetriesTransientOpenError(t *testing.T) {
+	ctx := context.Background()
+	var calls atomic.Int32
+	err := withSQLiteRetry(ctx, func() error {
+		n := calls.Add(1)
+		if n < 3 {
+			return errors.New("unable to open database file (14)")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("withSQLiteRetry() error: %v", err)
+	}
+	if calls.Load() != 3 {
+		t.Fatalf("calls = %d, want 3", calls.Load())
 	}
 }
 
