@@ -30,8 +30,12 @@ For each issue:
 
 2. Clarify scope until implementation-ready.
    - Gather required repository/context information.
+   - Keep digging until there are no implementation-level unknowns and implementation can be fully delegated to the agent.
    - If gaps remain, ask targeted questions to remove ambiguity.
-   - If the `spec` skill is available and requirements are still fuzzy, use it to converge on a testable spec.
+   - If technical selection is required, obtain explicit user approval for the technology to use before marking ready.
+   - If AC, DoD, or verification method is ambiguous, confirm and fix those ambiguities in this phase.
+   - Do not attach `Need to discuss` just to avoid deeper clarification work.
+   - If the user explicitly wants to defer discussion or explicitly gives up on clarifying now, treat it as deferred and proceed with `Need to discuss`.
 
 3. Update tracker state based on readiness.
    - If implementation can start immediately with no critical ambiguity, set status to `ready`.
