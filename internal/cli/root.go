@@ -34,6 +34,7 @@ func newRootCmd() *cobra.Command {
 	}
 	cmd.AddCommand(newHookCmd())
 	cmd.AddCommand(newGitHubCmd())
+	cmd.AddCommand(newUICmd())
 
 	return cmd
 }
