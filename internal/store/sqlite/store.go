@@ -103,12 +103,33 @@ func (s *Store) initSchema(ctx context.Context) error {
 			created_at TEXT NOT NULL,
 			updated_at TEXT NOT NULL
 		);`,
+		`CREATE TABLE IF NOT EXISTS statuses (
+			name TEXT PRIMARY KEY,
+			system INTEGER NOT NULL DEFAULT 0,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		);`,
 		`CREATE TABLE IF NOT EXISTS git_branch_links (
 			issue_id TEXT PRIMARY KEY,
 			branch_name TEXT NOT NULL,
 			created_at TEXT NOT NULL,
 			updated_at TEXT NOT NULL
 		);`,
+		`INSERT INTO statuses(name, system, created_at, updated_at)
+		 VALUES('todo', 1, datetime('now'), datetime('now'))
+		 ON CONFLICT(name) DO NOTHING;`,
+		`INSERT INTO statuses(name, system, created_at, updated_at)
+		 VALUES('ready', 1, datetime('now'), datetime('now'))
+		 ON CONFLICT(name) DO NOTHING;`,
+		`INSERT INTO statuses(name, system, created_at, updated_at)
+		 VALUES('in_progress', 1, datetime('now'), datetime('now'))
+		 ON CONFLICT(name) DO NOTHING;`,
+		`INSERT INTO statuses(name, system, created_at, updated_at)
+		 VALUES('done', 1, datetime('now'), datetime('now'))
+		 ON CONFLICT(name) DO NOTHING;`,
+		`INSERT INTO statuses(name, system, created_at, updated_at)
+		 VALUES('archived', 1, datetime('now'), datetime('now'))
+		 ON CONFLICT(name) DO NOTHING;`,
 		`INSERT INTO meta(key, value) VALUES('next_issue_number', '1')
 		 ON CONFLICT(key) DO NOTHING;`,
 	}

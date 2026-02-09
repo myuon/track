@@ -324,3 +324,54 @@ func TestNextShowsNoActionableIssues(t *testing.T) {
 		t.Fatalf("unexpected output: %q", out.String())
 	}
 }
+
+func TestStatusCommandAndCustomStatusFlow(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TRACK_HOME", tmp)
+
+	statusAdd := newStatusCmd()
+	var out bytes.Buffer
+	statusAdd.SetOut(&out)
+	statusAdd.SetErr(&out)
+	statusAdd.SetArgs([]string{"add", "blocked"})
+	if err := statusAdd.Execute(); err != nil {
+		t.Fatalf("status add error: %v", err)
+	}
+
+	ctx := context.Background()
+	store, err := sqlite.Open(ctx)
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	it, err := store.CreateIssue(ctx, issue.Item{
+		Title:    "blocked issue",
+		Status:   issue.StatusTodo,
+		Priority: "none",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue() error: %v", err)
+	}
+
+	setCmd := newSetCmd()
+	out.Reset()
+	setCmd.SetOut(&out)
+	setCmd.SetErr(&out)
+	setCmd.SetArgs([]string{it.ID, "--status", "blocked"})
+	if err := setCmd.Execute(); err != nil {
+		t.Fatalf("set custom status error: %v", err)
+	}
+
+	listCmd := newListCmd()
+	out.Reset()
+	listCmd.SetOut(&out)
+	listCmd.SetErr(&out)
+	listCmd.SetArgs([]string{"--status", "blocked"})
+	if err := listCmd.Execute(); err != nil {
+		t.Fatalf("list custom status error: %v", err)
+	}
+	if !strings.Contains(out.String(), "\tblocked\t") {
+		t.Fatalf("list should include custom status issue: %q", out.String())
+	}
+}

@@ -35,7 +35,9 @@ func newExportCmd() *cobra.Command {
 			}
 			defer store.Close()
 
-			statuses, err := parseStatusFilter(status)
+			statuses, err := parseStatusFilter(status, func(v string) error {
+				return store.ValidateStatus(ctx, v)
+			})
 			if err != nil {
 				return err
 			}

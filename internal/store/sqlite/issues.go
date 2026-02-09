@@ -32,7 +32,7 @@ type UpdateIssueInput struct {
 }
 
 func (s *Store) CreateIssue(ctx context.Context, item issue.Item) (issue.Item, error) {
-	if err := issue.ValidateStatus(item.Status); err != nil {
+	if err := s.ValidateStatus(ctx, item.Status); err != nil {
 		return issue.Item{}, err
 	}
 	if err := issue.ValidatePriority(item.Priority); err != nil {
@@ -92,7 +92,7 @@ func (s *Store) UpdateIssue(ctx context.Context, id string, in UpdateIssueInput)
 		current.Body = *in.Body
 	}
 	if in.Status != nil {
-		if err := issue.ValidateStatus(*in.Status); err != nil {
+		if err := s.ValidateStatus(ctx, *in.Status); err != nil {
 			return issue.Item{}, err
 		}
 		current.Status = *in.Status

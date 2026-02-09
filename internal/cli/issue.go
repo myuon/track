@@ -20,12 +20,81 @@ func newIssueCommands() []*cobra.Command {
 		newShowCmd(),
 		newEditCmd(),
 		newSetCmd(),
+		newStatusCmd(),
 		newLabelCmd(),
 		newNextCmd(),
 		newDoneCmd(),
 		newArchiveCmd(),
 		newReorderCmd(),
 	}
+}
+
+func newStatusCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "status",
+		Short: "Manage issue statuses",
+	}
+	cmd.AddCommand(&cobra.Command{
+		Use:   "list",
+		Short: "List available statuses",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := context.Background()
+			store, err := sqlite.Open(ctx)
+			if err != nil {
+				return err
+			}
+			defer store.Close()
+
+			statuses, err := store.ListStatuses(ctx)
+			if err != nil {
+				return err
+			}
+			for _, st := range statuses {
+				fmt.Fprintln(cmd.OutOrStdout(), st)
+			}
+			return nil
+		},
+	})
+	cmd.AddCommand(&cobra.Command{
+		Use:   "add <name>",
+		Short: "Add a custom status",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := context.Background()
+			store, err := sqlite.Open(ctx)
+			if err != nil {
+				return err
+			}
+			defer store.Close()
+
+			if err := store.AddStatus(ctx, args[0]); err != nil {
+				return err
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), "ok")
+			return nil
+		},
+	})
+	cmd.AddCommand(&cobra.Command{
+		Use:   "remove <name>",
+		Short: "Remove a custom status",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := context.Background()
+			store, err := sqlite.Open(ctx)
+			if err != nil {
+				return err
+			}
+			defer store.Close()
+
+			if err := store.RemoveStatus(ctx, args[0]); err != nil {
+				return err
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), "ok")
+			return nil
+		},
+	})
+	return cmd
 }
 
 func newNewCmd() *cobra.Command {
@@ -106,7 +175,9 @@ func newListCmd() *cobra.Command {
 			}
 			defer store.Close()
 
-			statuses, err := parseStatusFilter(status)
+			statuses, err := parseStatusFilter(status, func(v string) error {
+				return store.ValidateStatus(ctx, v)
+			})
 			if err != nil {
 				return err
 			}
@@ -198,7 +269,7 @@ func normalizeIssueIDArg(raw string) string {
 	return id
 }
 
-func parseStatusFilter(raw string) ([]string, error) {
+func parseStatusFilter(raw string, validate func(string) error) ([]string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return nil, nil
@@ -210,7 +281,7 @@ func parseStatusFilter(raw string) ([]string, error) {
 		if st == "" {
 			continue
 		}
-		if err := issue.ValidateStatus(st); err != nil {
+		if err := validate(st); err != nil {
 			return nil, err
 		}
 		out = append(out, st)
@@ -295,7 +366,7 @@ func newSetCmd() *cobra.Command {
 
 			var in sqlite.UpdateIssueInput
 			if cmd.Flags().Changed("status") {
-				if err := issue.ValidateStatus(status); err != nil {
+				if err := store.ValidateStatus(ctx, status); err != nil {
 					return err
 				}
 				in.Status = &status
