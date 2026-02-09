@@ -138,3 +138,18 @@ export TRACK_HOME=$(mktemp -d)
 ```bash
 go test ./...
 ```
+
+## CI and PR Monitoring
+
+GitHub Actions runs tests automatically on:
+
+- `pull_request`
+- `push` to `main`
+
+After opening a PR, you can link it to an issue and monitor with `track gh`:
+
+```bash
+track gh link TRK-15 --pr <PR number or URL> --repo <owner/name>
+track gh status TRK-15
+track gh watch --repo <owner/name>
+```
