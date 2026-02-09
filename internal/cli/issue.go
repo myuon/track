@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/myuon/track/internal/hooks"
@@ -150,7 +151,7 @@ func newShowCmd() *cobra.Command {
 			}
 			defer store.Close()
 
-			it, err := store.GetIssue(ctx, args[0])
+			it, err := store.GetIssue(ctx, normalizeIssueIDArg(args[0]))
 			if err != nil {
 				return err
 			}
@@ -178,6 +179,14 @@ func newShowCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+func normalizeIssueIDArg(raw string) string {
+	id := strings.TrimSpace(raw)
+	if _, err := strconv.Atoi(id); err == nil {
+		return "TRK-" + id
+	}
+	return id
 }
 
 func newEditCmd() *cobra.Command {

@@ -70,3 +70,38 @@ func TestListIncludesLabelsColumn(t *testing.T) {
 		t.Fatalf("second line unexpected: %q", lines[1])
 	}
 }
+
+func TestShowAcceptsNumericIssueID(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TRACK_HOME", tmp)
+
+	ctx := context.Background()
+	store, err := sqlite.Open(ctx)
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	_, err = store.CreateIssue(ctx, issue.Item{
+		Title:    "Numeric ID lookup",
+		Status:   issue.StatusTodo,
+		Priority: "p2",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue() error: %v", err)
+	}
+
+	cmd := newShowCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"1"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("cmd.Execute() error: %v", err)
+	}
+
+	if !strings.Contains(out.String(), "id: TRK-1\n") {
+		t.Fatalf("output should contain normalized ID, got: %q", out.String())
+	}
+}
