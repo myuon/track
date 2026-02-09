@@ -17,11 +17,10 @@ Examples:
 Notes:
   - If mode is omitted, "execution" is used.
   - issue-id accepts numeric form (e.g. 12) or canonical form (e.g. TRK-12).
-  - Default is "-a never --sandbox danger-full-access" (GitHub access-friendly).
+  - Default is "--sandbox danger-full-access" (GitHub access-friendly).
 
 Options:
   --sandbox <mode>    Override sandbox mode (read-only|workspace-write|danger-full-access)
-  --ask <policy>      Override approval policy (untrusted|on-failure|on-request|never)
   --full-auto         Use Codex --full-auto preset
   --bypass            Use --dangerously-bypass-approvals-and-sandbox
 EOF
@@ -39,7 +38,6 @@ fi
 
 repo_root="$(cd "$(dirname "$0")" && pwd)"
 
-approval_policy="never"
 sandbox_mode="danger-full-access"
 use_full_auto="false"
 use_bypass="false"
@@ -55,15 +53,6 @@ while [[ $# -gt 0 ]]; do
         exit 1
       fi
       sandbox_mode="$2"
-      shift 2
-      ;;
-    --ask)
-      if [[ $# -lt 2 ]]; then
-        echo "error: --ask requires a value" >&2
-        usage
-        exit 1
-      fi
-      approval_policy="$2"
       shift 2
       ;;
     --full-auto)
@@ -114,7 +103,7 @@ if [[ "$use_bypass" == "true" ]]; then
 elif [[ "$use_full_auto" == "true" ]]; then
   codex_args+=(--full-auto)
 else
-  codex_args+=(-a "$approval_policy" --sandbox "$sandbox_mode")
+  codex_args+=(--sandbox "$sandbox_mode")
 fi
 
 exec codex exec -C "$repo_root" "${codex_args[@]}" "$prompt"
