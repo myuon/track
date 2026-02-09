@@ -69,6 +69,41 @@ export PATH="$(go env GOPATH)/bin:$PATH"
 ./track done TRK-1
 ```
 
+## Agent Skill
+
+This repository includes an agent skill for operating `track` workflows:
+
+- Skill path: `skills/track-issue-flow`
+- Purpose: help an agent resolve `track` CLI usage and move issues safely from discovery to status updates.
+
+### Install the skill
+
+Install into your Codex skills directory:
+
+```bash
+mkdir -p "$CODEX_HOME/skills"
+cp -R skills/track-issue-flow "$CODEX_HOME/skills/"
+```
+
+### Use the skill
+
+Typical flow with the skill:
+
+1. Run `track list` and map a requested list position to an issue ID.
+2. Run `track show <issue-id>` to confirm scope and labels.
+3. Apply updates with explicit ID-based commands such as:
+   - `track set <issue-id> --status in_progress`
+   - `track set <issue-id> --priority p2`
+   - `track done <issue-id>`
+
+Example for a request like "5番を進めたい":
+
+```bash
+track list
+track show TRK-5
+track set TRK-5 --status in_progress
+```
+
 ## Config
 
 Track stores config at `~/.track/config.toml`.

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Track Issue Flow"
+  short_description: "Drive issue work using the track CLI"
+  default_prompt: "Use this skill to select, inspect, and advance issues in the track repository with clear status updates."
