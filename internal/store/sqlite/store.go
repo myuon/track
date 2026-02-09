@@ -3,8 +3,11 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
+	"time"
 
 	appconfig "github.com/myuon/track/internal/config"
 	_ "modernc.org/sqlite"
@@ -45,6 +48,11 @@ func Open(ctx context.Context) (*Store, error) {
 	db.SetMaxOpenConns(1)
 	db.SetConnMaxLifetime(0)
 	db.SetConnMaxIdleTime(0)
+
+	if err := applySQLitePragmas(ctx, db); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
 
 	if err := db.PingContext(ctx); err != nil {
 		_ = db.Close()
@@ -98,12 +106,21 @@ func (s *Store) initSchema(ctx context.Context) error {
 			created_at TEXT NOT NULL,
 			updated_at TEXT NOT NULL
 		);`,
+		`CREATE TABLE IF NOT EXISTS git_branch_links (
+			issue_id TEXT PRIMARY KEY,
+			branch_name TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		);`,
 		`INSERT INTO meta(key, value) VALUES('next_issue_number', '1')
 		 ON CONFLICT(key) DO NOTHING;`,
 	}
 
 	for _, stmt := range stmts {
-		if _, err := s.db.ExecContext(ctx, stmt); err != nil {
+		if err := withBusyRetry(ctx, func() error {
+			_, err := s.db.ExecContext(ctx, stmt)
+			return err
+		}); err != nil {
 			return fmt.Errorf("init schema: %w", err)
 		}
 	}
@@ -112,29 +129,90 @@ func (s *Store) initSchema(ctx context.Context) error {
 }
 
 func (s *Store) NextIssueID(ctx context.Context) (string, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
+	var id string
+	err := withBusyRetry(ctx, func() error {
+		tx, err := s.db.BeginTx(ctx, nil)
+		if err != nil {
+			return fmt.Errorf("begin tx: %w", err)
+		}
+
+		var n int
+		if err := tx.QueryRowContext(ctx, `SELECT value FROM meta WHERE key = 'next_issue_number'`).Scan(&n); err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("read next issue number: %w", err)
+		}
+
+		if _, err := tx.ExecContext(ctx, `UPDATE meta SET value = ? WHERE key = 'next_issue_number'`, n+1); err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("update next issue number: %w", err)
+		}
+
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("commit next issue number: %w", err)
+		}
+
+		id = fmt.Sprintf("%s-%d", issueIDPrefix, n)
+		return nil
+	})
 	if err != nil {
-		return "", fmt.Errorf("begin tx: %w", err)
+		return "", err
 	}
-
-	var n int
-	if err := tx.QueryRowContext(ctx, `SELECT value FROM meta WHERE key = 'next_issue_number'`).Scan(&n); err != nil {
-		_ = tx.Rollback()
-		return "", fmt.Errorf("read next issue number: %w", err)
-	}
-
-	if _, err := tx.ExecContext(ctx, `UPDATE meta SET value = ? WHERE key = 'next_issue_number'`, n+1); err != nil {
-		_ = tx.Rollback()
-		return "", fmt.Errorf("update next issue number: %w", err)
-	}
-
-	if err := tx.Commit(); err != nil {
-		return "", fmt.Errorf("commit next issue number: %w", err)
-	}
-
-	return fmt.Sprintf("%s-%d", issueIDPrefix, n), nil
+	return id, nil
 }
 
 func (s *Store) Ping(ctx context.Context) error {
 	return s.db.PingContext(ctx)
+}
+
+func applySQLitePragmas(ctx context.Context, db *sql.DB) error {
+	pragmas := []string{
+		`PRAGMA journal_mode=WAL;`,
+		`PRAGMA synchronous=NORMAL;`,
+		`PRAGMA busy_timeout=5000;`,
+	}
+	for _, stmt := range pragmas {
+		if err := withBusyRetry(ctx, func() error {
+			_, err := db.ExecContext(ctx, stmt)
+			return err
+		}); err != nil {
+			return fmt.Errorf("apply pragma %q: %w", stmt, err)
+		}
+	}
+	return nil
+}
+
+func withBusyRetry(ctx context.Context, fn func() error) error {
+	const maxAttempts = 8
+	baseDelay := 25 * time.Millisecond
+	var lastErr error
+	for i := 0; i < maxAttempts; i++ {
+		if err := fn(); err != nil {
+			lastErr = err
+			if !isSQLiteBusyErr(err) {
+				return err
+			}
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(time.Duration(i+1) * baseDelay):
+				continue
+			}
+		}
+		return nil
+	}
+	return lastErr
+}
+
+func isSQLiteBusyErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "database is locked") ||
+		strings.Contains(msg, "database table is locked") ||
+		strings.Contains(msg, "sqlite_busy") ||
+		strings.Contains(msg, "sqlite_locked")
 }

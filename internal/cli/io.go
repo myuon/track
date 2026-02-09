@@ -35,13 +35,12 @@ func newExportCmd() *cobra.Command {
 			}
 			defer store.Close()
 
-			if status != "" {
-				if err := issue.ValidateStatus(status); err != nil {
-					return err
-				}
+			statuses, err := parseStatusFilter(status)
+			if err != nil {
+				return err
 			}
 
-			items, err := store.ListIssues(ctx, sqlite.ListFilter{Status: status, Label: label, Sort: "manual"})
+			items, err := store.ListIssues(ctx, sqlite.ListFilter{Statuses: statuses, Label: label, Sort: "manual"})
 			if err != nil {
 				return err
 			}

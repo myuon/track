@@ -105,3 +105,94 @@ func TestShowAcceptsNumericIssueID(t *testing.T) {
 		t.Fatalf("output should contain normalized ID, got: %q", out.String())
 	}
 }
+
+func TestListExcludesDoneByDefaultAndSupportsMultiStatus(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TRACK_HOME", tmp)
+
+	ctx := context.Background()
+	store, err := sqlite.Open(ctx)
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	_, _ = store.CreateIssue(ctx, issue.Item{Title: "todo", Status: issue.StatusTodo, Priority: "p2"})
+	_, _ = store.CreateIssue(ctx, issue.Item{Title: "ready", Status: issue.StatusReady, Priority: "p2"})
+	_, _ = store.CreateIssue(ctx, issue.Item{Title: "done", Status: issue.StatusDone, Priority: "p2"})
+
+	cmd := newListCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("list default error: %v", err)
+	}
+	if strings.Contains(out.String(), "\tdone\t") {
+		t.Fatalf("default list should exclude done, got: %q", out.String())
+	}
+
+	out.Reset()
+	cmd = newListCmd()
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"--status", "done"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("list --status done error: %v", err)
+	}
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	if len(lines) != 1 || !strings.Contains(lines[0], "\tdone\t") {
+		t.Fatalf("--status done should include only done: %q", out.String())
+	}
+
+	out.Reset()
+	cmd = newListCmd()
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"--status", "todo,in_progress"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("list multi status error: %v", err)
+	}
+	if strings.Contains(out.String(), "\tdone\t") {
+		t.Fatalf("multi status should exclude done: %q", out.String())
+	}
+}
+
+func TestShowIncludesLinkedBranch(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TRACK_HOME", tmp)
+
+	ctx := context.Background()
+	store, err := sqlite.Open(ctx)
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	it, err := store.CreateIssue(ctx, issue.Item{
+		Title:    "branch",
+		Status:   issue.StatusTodo,
+		Priority: "p2",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue() error: %v", err)
+	}
+	if err := store.UpsertGitBranchLink(ctx, it.ID, "main"); err != nil {
+		t.Fatalf("UpsertGitBranchLink() error: %v", err)
+	}
+
+	cmd := newShowCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{it.ID})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("show error: %v", err)
+	}
+	if !strings.Contains(out.String(), "branch: main\n") {
+		t.Fatalf("show should print linked branch: %q", out.String())
+	}
+	if !strings.Contains(out.String(), "merged: ") {
+		t.Fatalf("show should print merge status: %q", out.String())
+	}
+}

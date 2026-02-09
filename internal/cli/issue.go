@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"strconv"
 	"strings"
@@ -105,18 +106,18 @@ func newListCmd() *cobra.Command {
 			}
 			defer store.Close()
 
-			if status != "" {
-				if err := issue.ValidateStatus(status); err != nil {
-					return err
-				}
+			statuses, err := parseStatusFilter(status)
+			if err != nil {
+				return err
 			}
 
 			items, err := store.ListIssues(ctx, sqlite.ListFilter{
-				Status:   status,
-				Label:    label,
-				Assignee: issue.NormalizeAssignee(assignee),
-				Search:   search,
-				Sort:     sort,
+				Statuses:    statuses,
+				ExcludeDone: len(statuses) == 0,
+				Label:       label,
+				Assignee:    issue.NormalizeAssignee(assignee),
+				Search:      search,
+				Sort:        sort,
 			})
 			if err != nil {
 				return err
@@ -129,7 +130,7 @@ func newListCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&status, "status", "", "Status filter")
+	cmd.Flags().StringVar(&status, "status", "", "Status filter (comma separated)")
 	cmd.Flags().StringVar(&label, "label", "", "Label filter")
 	cmd.Flags().StringVar(&assignee, "assignee", "", "Assignee filter")
 	cmd.Flags().StringVar(&search, "search", "", "Search text")
@@ -172,6 +173,14 @@ func newShowCmd() *cobra.Command {
 			if it.NextAction != "" {
 				fmt.Fprintf(cmd.OutOrStdout(), "next_action: %s\n", it.NextAction)
 			}
+			branchLink, err := store.GetGitBranchLink(ctx, it.ID)
+			if err != nil && !isNotFoundErr(err) {
+				return err
+			}
+			if err == nil {
+				fmt.Fprintf(cmd.OutOrStdout(), "branch: %s\n", branchLink.BranchName)
+				fmt.Fprintf(cmd.OutOrStdout(), "merged: %s\n", branchMergeStatus(ctx, branchLink.BranchName))
+			}
 			if it.Body != "" {
 				fmt.Fprintf(cmd.OutOrStdout(), "body: %s\n", it.Body)
 			}
@@ -187,6 +196,33 @@ func normalizeIssueIDArg(raw string) string {
 		return "TRK-" + id
 	}
 	return id
+}
+
+func parseStatusFilter(raw string) ([]string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		st := strings.TrimSpace(part)
+		if st == "" {
+			continue
+		}
+		if err := issue.ValidateStatus(st); err != nil {
+			return nil, err
+		}
+		out = append(out, st)
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("status filter is empty")
+	}
+	return out, nil
+}
+
+func isNotFoundErr(err error) bool {
+	return strings.Contains(strings.ToLower(err.Error()), strings.ToLower(sql.ErrNoRows.Error()))
 }
 
 func newEditCmd() *cobra.Command {

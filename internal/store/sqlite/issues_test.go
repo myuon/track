@@ -52,7 +52,7 @@ func TestCreateGetUpdateAndListIssues(t *testing.T) {
 		t.Fatalf("unexpected updated issue: %+v", updated)
 	}
 
-	items, err := store.ListIssues(ctx, ListFilter{Status: issue.StatusInProgress})
+	items, err := store.ListIssues(ctx, ListFilter{Statuses: []string{issue.StatusInProgress}})
 	if err != nil {
 		t.Fatalf("ListIssues(status) error: %v", err)
 	}

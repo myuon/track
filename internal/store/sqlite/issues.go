@@ -13,11 +13,12 @@ import (
 )
 
 type ListFilter struct {
-	Status   string
-	Label    string
-	Assignee string
-	Search   string
-	Sort     string
+	Statuses    []string
+	ExcludeDone bool
+	Label       string
+	Assignee    string
+	Search      string
+	Sort        string
 }
 
 type UpdateIssueInput struct {
@@ -129,9 +130,19 @@ func (s *Store) ListIssues(ctx context.Context, f ListFilter) ([]issue.Item, err
 	base := `SELECT id, title, status, priority, assignee, due, labels_json, next_action, body, created_at, updated_at FROM issues WHERE 1=1`
 	args := make([]any, 0, 4)
 
-	if f.Status != "" {
-		base += ` AND status = ?`
-		args = append(args, f.Status)
+	if len(f.Statuses) > 0 {
+		base += ` AND status IN (`
+		for i, st := range f.Statuses {
+			if i > 0 {
+				base += `, `
+			}
+			base += `?`
+			args = append(args, st)
+		}
+		base += `)`
+	} else if f.ExcludeDone {
+		base += ` AND status <> ?`
+		args = append(args, issue.StatusDone)
 	}
 	if f.Assignee != "" {
 		base += ` AND assignee = ?`
