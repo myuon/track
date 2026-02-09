@@ -31,6 +31,32 @@ Track is a local-first, CLI-first issue tracker.
 go build -o track ./cmd/track
 ```
 
+## Install
+
+For local development checkout:
+
+```bash
+go install ./cmd/track
+```
+
+For a published module:
+
+```bash
+go install github.com/myuon/track/cmd/track@latest
+```
+
+For stable usage, pin a version tag:
+
+```bash
+go install github.com/myuon/track/cmd/track@v0.1.0
+```
+
+If `track` is not found after install, add Go bin to your `PATH`:
+
+```bash
+export PATH="$(go env GOPATH)/bin:$PATH"
+```
+
 ## Quick Start
 
 ```bash
