@@ -29,6 +29,9 @@ func newRootCmd() *cobra.Command {
 	for _, c := range newIssueCommands() {
 		cmd.AddCommand(c)
 	}
+	for _, c := range newIOCommands() {
+		cmd.AddCommand(c)
+	}
 
 	return cmd
 }
