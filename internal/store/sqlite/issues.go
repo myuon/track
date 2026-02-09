@@ -161,7 +161,7 @@ func (s *Store) ListIssues(ctx context.Context, f ListFilter) ([]issue.Item, err
 	sort := strings.ToLower(f.Sort)
 	switch sort {
 	case "priority":
-		base += ` ORDER BY CASE priority WHEN 'p0' THEN 0 WHEN 'p1' THEN 1 WHEN 'p2' THEN 2 ELSE 3 END, updated_at DESC`
+		base += ` ORDER BY CASE priority WHEN 'p0' THEN 0 WHEN 'p1' THEN 1 WHEN 'p2' THEN 2 WHEN 'p3' THEN 3 WHEN 'none' THEN 4 ELSE 5 END, updated_at DESC`
 	case "due":
 		base += ` ORDER BY CASE WHEN due IS NULL OR due = '' THEN 1 ELSE 0 END, due ASC, updated_at DESC`
 	case "manual":

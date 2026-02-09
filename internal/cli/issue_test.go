@@ -196,3 +196,32 @@ func TestShowIncludesLinkedBranch(t *testing.T) {
 		t.Fatalf("show should print merge status: %q", out.String())
 	}
 }
+
+func TestNewDefaultsPriorityToNone(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TRACK_HOME", tmp)
+
+	cmd := newNewCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"default priority"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("new command error: %v", err)
+	}
+
+	ctx := context.Background()
+	store, err := sqlite.Open(ctx)
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	got, err := store.GetIssue(ctx, strings.TrimSpace(out.String()))
+	if err != nil {
+		t.Fatalf("GetIssue() error: %v", err)
+	}
+	if got.Priority != "none" {
+		t.Fatalf("priority = %q, want none", got.Priority)
+	}
+}

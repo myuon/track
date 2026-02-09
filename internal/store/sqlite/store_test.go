@@ -42,6 +42,9 @@ func TestIsSQLiteRetryableErr(t *testing.T) {
 	if !isSQLiteRetryableErr(errors.New("database is locked (5) (SQLITE_BUSY)")) {
 		t.Fatalf("SQLITE_BUSY should be retryable")
 	}
+	if !isSQLiteRetryableErr(errors.New("begin tx: SQL logic error: cannot start a transaction within a transaction (1)")) {
+		t.Fatalf("nested transaction error should be retryable")
+	}
 	if isSQLiteRetryableErr(errors.New("syntax error")) {
 		t.Fatalf("non-transient errors should not be retryable")
 	}

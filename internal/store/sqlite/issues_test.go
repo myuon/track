@@ -90,6 +90,7 @@ func TestListSortByPriority(t *testing.T) {
 
 	_, _ = store.CreateIssue(ctx, issue.Item{Title: "p3", Status: issue.StatusTodo, Priority: "p3"})
 	_, _ = store.CreateIssue(ctx, issue.Item{Title: "p0", Status: issue.StatusTodo, Priority: "p0"})
+	_, _ = store.CreateIssue(ctx, issue.Item{Title: "none", Status: issue.StatusTodo, Priority: "none"})
 
 	items, err := store.ListIssues(ctx, ListFilter{Sort: "priority"})
 	if err != nil {
@@ -100,6 +101,9 @@ func TestListSortByPriority(t *testing.T) {
 	}
 	if items[0].Priority != "p0" {
 		t.Fatalf("first priority = %s, want p0", items[0].Priority)
+	}
+	if items[len(items)-1].Priority != "none" {
+		t.Fatalf("last priority = %s, want none", items[len(items)-1].Priority)
 	}
 }
 

@@ -212,5 +212,6 @@ func isSQLiteRetryableErr(err error) bool {
 		strings.Contains(msg, "database table is locked") ||
 		strings.Contains(msg, "sqlite_busy") ||
 		strings.Contains(msg, "sqlite_locked") ||
+		strings.Contains(msg, "cannot start a transaction within a transaction") ||
 		strings.Contains(msg, "unable to open database file")
 }

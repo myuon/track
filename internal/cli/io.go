@@ -100,7 +100,7 @@ func newImportCmd() *cobra.Command {
 					it.Status = issue.StatusTodo
 				}
 				if it.Priority == "" {
-					it.Priority = "p2"
+					it.Priority = "none"
 				}
 				if _, err := store.CreateIssue(ctx, it); err != nil {
 					return err

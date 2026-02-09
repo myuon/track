@@ -50,3 +50,24 @@ func TestJSONLImport(t *testing.T) {
 		t.Fatalf("len(items) = %d, want 2", len(items))
 	}
 }
+
+func TestCSVRoundTripWithNonePriority(t *testing.T) {
+	items := []issue.Item{{
+		ID:       "TRK-2",
+		Title:    "B",
+		Status:   issue.StatusTodo,
+		Priority: "none",
+	}}
+
+	var buf bytes.Buffer
+	if err := writeCSVExport(&buf, items); err != nil {
+		t.Fatalf("writeCSVExport() error: %v", err)
+	}
+	got, err := readCSVImport(strings.NewReader(buf.String()))
+	if err != nil {
+		t.Fatalf("readCSVImport() error: %v", err)
+	}
+	if len(got) != 1 || got[0].Priority != "none" {
+		t.Fatalf("unexpected record: %+v", got)
+	}
+}

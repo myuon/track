@@ -79,7 +79,7 @@ func newNewCmd() *cobra.Command {
 
 	cmd.Flags().StringVar(&body, "body", "", "Issue body")
 	cmd.Flags().StringArrayVar(&labels, "label", nil, "Issue label (repeatable)")
-	cmd.Flags().StringVar(&priority, "priority", "p2", "Priority (p0|p1|p2|p3)")
+	cmd.Flags().StringVar(&priority, "priority", "none", "Priority (none|p0|p1|p2|p3)")
 	cmd.Flags().StringVar(&due, "due", "", "Due date (YYYY-MM-DD)")
 	cmd.Flags().StringVar(&assignee, "assignee", "", "Assignee")
 

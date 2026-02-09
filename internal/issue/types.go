@@ -23,10 +23,11 @@ var validStatuses = map[string]struct{}{
 }
 
 var validPriorities = map[string]struct{}{
-	"p0": {},
-	"p1": {},
-	"p2": {},
-	"p3": {},
+	"none": {},
+	"p0":   {},
+	"p1":   {},
+	"p2":   {},
+	"p3":   {},
 }
 
 type Item struct {

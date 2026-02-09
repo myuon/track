@@ -13,6 +13,13 @@ func TestValidateStatusAndDue(t *testing.T) {
 		t.Fatalf("expected invalid status error")
 	}
 
+	if err := ValidatePriority("none"); err != nil {
+		t.Fatalf("expected valid priority none: %v", err)
+	}
+	if err := ValidatePriority("bad"); err == nil {
+		t.Fatalf("expected invalid priority error")
+	}
+
 	if err := ValidateDue("2026-02-10"); err != nil {
 		t.Fatalf("expected valid due: %v", err)
 	}
