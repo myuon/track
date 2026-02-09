@@ -17,6 +17,11 @@ func newIssueCommands() []*cobra.Command {
 		newShowCmd(),
 		newEditCmd(),
 		newSetCmd(),
+		newLabelCmd(),
+		newNextCmd(),
+		newDoneCmd(),
+		newArchiveCmd(),
+		newReorderCmd(),
 	}
 }
 
@@ -123,7 +128,7 @@ func newListCmd() *cobra.Command {
 	cmd.Flags().StringVar(&label, "label", "", "Label filter")
 	cmd.Flags().StringVar(&assignee, "assignee", "", "Assignee filter")
 	cmd.Flags().StringVar(&search, "search", "", "Search text")
-	cmd.Flags().StringVar(&sort, "sort", "updated", "Sort by priority|due|updated")
+	cmd.Flags().StringVar(&sort, "sort", "updated", "Sort by priority|due|updated|manual")
 
 	return cmd
 }
@@ -276,5 +281,141 @@ func newSetCmd() *cobra.Command {
 	cmd.Flags().StringVar(&due, "due", "", "Due date")
 	cmd.Flags().StringVar(&assignee, "assignee", "", "Assignee")
 
+	return cmd
+}
+
+func newLabelCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "label",
+		Short: "Manage issue labels",
+	}
+	cmd.AddCommand(&cobra.Command{
+		Use:   "add <id> <label>",
+		Short: "Add label to issue",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := context.Background()
+			store, err := sqlite.Open(ctx)
+			if err != nil {
+				return err
+			}
+			defer store.Close()
+			if _, err := store.AddLabel(ctx, args[0], args[1]); err != nil {
+				return err
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), "ok")
+			return nil
+		},
+	})
+	cmd.AddCommand(&cobra.Command{
+		Use:   "rm <id> <label>",
+		Short: "Remove label from issue",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := context.Background()
+			store, err := sqlite.Open(ctx)
+			if err != nil {
+				return err
+			}
+			defer store.Close()
+			if _, err := store.RemoveLabel(ctx, args[0], args[1]); err != nil {
+				return err
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), "ok")
+			return nil
+		},
+	})
+	return cmd
+}
+
+func newNextCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "next <id> <text>",
+		Short: "Set next action for issue",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := context.Background()
+			store, err := sqlite.Open(ctx)
+			if err != nil {
+				return err
+			}
+			defer store.Close()
+			if _, err := store.SetNextAction(ctx, args[0], args[1]); err != nil {
+				return err
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), "ok")
+			return nil
+		},
+	}
+}
+
+func newDoneCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "done <id>",
+		Short: "Mark issue as done",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := context.Background()
+			store, err := sqlite.Open(ctx)
+			if err != nil {
+				return err
+			}
+			defer store.Close()
+			status := issue.StatusDone
+			if _, err := store.UpdateIssue(ctx, args[0], sqlite.UpdateIssueInput{Status: &status}); err != nil {
+				return err
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), "ok")
+			return nil
+		},
+	}
+}
+
+func newArchiveCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "archive <id>",
+		Short: "Archive issue",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := context.Background()
+			store, err := sqlite.Open(ctx)
+			if err != nil {
+				return err
+			}
+			defer store.Close()
+			status := issue.StatusArchived
+			if _, err := store.UpdateIssue(ctx, args[0], sqlite.UpdateIssueInput{Status: &status}); err != nil {
+				return err
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), "ok")
+			return nil
+		},
+	}
+}
+
+func newReorderCmd() *cobra.Command {
+	var beforeID string
+	var afterID string
+
+	cmd := &cobra.Command{
+		Use:   "reorder <id>",
+		Short: "Reorder issue in global manual queue",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := context.Background()
+			store, err := sqlite.Open(ctx)
+			if err != nil {
+				return err
+			}
+			defer store.Close()
+			if err := store.Reorder(ctx, args[0], beforeID, afterID); err != nil {
+				return err
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), "ok")
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&beforeID, "before", "", "Move before issue ID")
+	cmd.Flags().StringVar(&afterID, "after", "", "Move after issue ID")
 	return cmd
 }

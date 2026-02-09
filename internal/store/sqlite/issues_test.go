@@ -102,3 +102,62 @@ func TestListSortByPriority(t *testing.T) {
 		t.Fatalf("first priority = %s, want p0", items[0].Priority)
 	}
 }
+
+func TestLabelsNextAndReorder(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TRACK_HOME", tmp)
+
+	ctx := context.Background()
+	store, err := Open(ctx)
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	a, err := store.CreateIssue(ctx, issue.Item{Title: "A", Status: issue.StatusTodo, Priority: "p2"})
+	if err != nil {
+		t.Fatalf("CreateIssue A error: %v", err)
+	}
+	b, err := store.CreateIssue(ctx, issue.Item{Title: "B", Status: issue.StatusTodo, Priority: "p2"})
+	if err != nil {
+		t.Fatalf("CreateIssue B error: %v", err)
+	}
+
+	got, err := store.AddLabel(ctx, a.ID, "ready")
+	if err != nil {
+		t.Fatalf("AddLabel() error: %v", err)
+	}
+	if len(got.Labels) != 1 || got.Labels[0] != "ready" {
+		t.Fatalf("unexpected labels after add: %+v", got.Labels)
+	}
+
+	got, err = store.RemoveLabel(ctx, a.ID, "ready")
+	if err != nil {
+		t.Fatalf("RemoveLabel() error: %v", err)
+	}
+	if len(got.Labels) != 0 {
+		t.Fatalf("labels should be empty after remove: %+v", got.Labels)
+	}
+
+	got, err = store.SetNextAction(ctx, a.ID, "Write PR")
+	if err != nil {
+		t.Fatalf("SetNextAction() error: %v", err)
+	}
+	if got.NextAction != "Write PR" {
+		t.Fatalf("next_action = %q, want %q", got.NextAction, "Write PR")
+	}
+
+	if err := store.Reorder(ctx, b.ID, a.ID, ""); err != nil {
+		t.Fatalf("Reorder() error: %v", err)
+	}
+	items, err := store.ListIssues(ctx, ListFilter{Sort: "manual"})
+	if err != nil {
+		t.Fatalf("ListIssues(manual) error: %v", err)
+	}
+	if len(items) < 2 {
+		t.Fatalf("len(items) = %d, want >=2", len(items))
+	}
+	if items[0].ID != b.ID {
+		t.Fatalf("first issue = %s, want %s", items[0].ID, b.ID)
+	}
+}
