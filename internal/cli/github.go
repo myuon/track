@@ -1,12 +1,14 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os/exec"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -17,10 +19,17 @@ import (
 )
 
 var prNumberRe = regexp.MustCompile(`([0-9]+)$`)
+var ghRunLinkRe = regexp.MustCompile(`actions/runs/([0-9]+)(?:/job/([0-9]+))?`)
 
 type ghPRState struct {
 	State    string  `json:"state"`
 	MergedAt *string `json:"mergedAt"`
+}
+
+type ghCheck struct {
+	Name  string `json:"name"`
+	State string `json:"state"`
+	Link  string `json:"link"`
 }
 
 func newGitHubCmd() *cobra.Command {
@@ -31,6 +40,7 @@ func newGitHubCmd() *cobra.Command {
 	cmd.AddCommand(newGHLinkCmd())
 	cmd.AddCommand(newGHStatusCmd())
 	cmd.AddCommand(newGHWatchCmd())
+	cmd.AddCommand(newGHAutoMergeCmd())
 	return cmd
 }
 
@@ -54,10 +64,11 @@ func newGHLinkCmd() *cobra.Command {
 			}
 			defer store.Close()
 
-			if _, err := store.GetIssue(ctx, args[0]); err != nil {
+			issueID := normalizeIssueIDArg(args[0])
+			if _, err := store.GetIssue(ctx, issueID); err != nil {
 				return err
 			}
-			if err := store.UpsertGitHubLink(ctx, args[0], normalizePRRef(prRef), repo); err != nil {
+			if err := store.UpsertGitHubLink(ctx, issueID, normalizePRRef(prRef), repo); err != nil {
 				return err
 			}
 			fmt.Fprintln(cmd.OutOrStdout(), "ok")
@@ -75,6 +86,9 @@ func newGHStatusCmd() *cobra.Command {
 		Short: "Show linked PR status",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if _, err := exec.LookPath("gh"); err != nil {
+				return fmt.Errorf("gh command is required")
+			}
 			ctx := context.Background()
 			store, err := sqlite.Open(ctx)
 			if err != nil {
@@ -82,11 +96,30 @@ func newGHStatusCmd() *cobra.Command {
 			}
 			defer store.Close()
 
-			link, err := store.GetGitHubLink(ctx, args[0])
+			issueID := normalizeIssueIDArg(args[0])
+			link, err := store.GetGitHubLink(ctx, issueID)
 			if err != nil {
 				return err
 			}
+			checks, err := fetchPRChecks(ctx, link, "")
+			if err != nil {
+				return err
+			}
+
 			fmt.Fprintf(cmd.OutOrStdout(), "issue: %s\npr: %s\nrepo: %s\n", link.IssueID, link.PRRef, link.Repo)
+			if len(checks) == 0 {
+				fmt.Fprintln(cmd.OutOrStdout(), "no checks found")
+				fmt.Fprintln(cmd.OutOrStdout(), "overall: pending")
+				return nil
+			}
+
+			sort.SliceStable(checks, func(i, j int) bool {
+				return checks[i].Name < checks[j].Name
+			})
+			for _, check := range checks {
+				fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\t%s\n", check.Name, strings.ToLower(check.State), check.Link)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "overall: %s\n", summarizeChecks(checks))
 			return nil
 		},
 	}
@@ -110,7 +143,8 @@ func newGHWatchCmd() *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			if err := runGHWatchOnce(ctx, repo, cmd.OutOrStdout()); err != nil {
+			seenFailures := map[string]struct{}{}
+			if err := runGHWatchOnce(ctx, repo, cmd.OutOrStdout(), seenFailures); err != nil {
 				return err
 			}
 
@@ -121,7 +155,7 @@ func newGHWatchCmd() *cobra.Command {
 				case <-ctx.Done():
 					return nil
 				case <-ticker.C:
-					if err := runGHWatchOnce(ctx, repo, cmd.OutOrStdout()); err != nil {
+					if err := runGHWatchOnce(ctx, repo, cmd.OutOrStdout(), seenFailures); err != nil {
 						fmt.Fprintf(cmd.ErrOrStderr(), "watch error: %v\n", err)
 					}
 				}
@@ -133,7 +167,66 @@ func newGHWatchCmd() *cobra.Command {
 	return cmd
 }
 
-func runGHWatchOnce(ctx context.Context, repo string, out io.Writer) error {
+func newGHAutoMergeCmd() *cobra.Command {
+	var method string
+	var repoOverride string
+	cmd := &cobra.Command{
+		Use:   "auto-merge <issue_id>",
+		Short: "Enable auto-merge for linked PR",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if _, err := exec.LookPath("gh"); err != nil {
+				return fmt.Errorf("gh command is required")
+			}
+			if method != "squash" && method != "merge" && method != "rebase" {
+				return fmt.Errorf("invalid --method: %s", method)
+			}
+
+			ctx := context.Background()
+			store, err := sqlite.Open(ctx)
+			if err != nil {
+				return err
+			}
+			defer store.Close()
+
+			issueID := normalizeIssueIDArg(args[0])
+			link, err := store.GetGitHubLink(ctx, issueID)
+			if err != nil {
+				return err
+			}
+
+			pr := normalizePRRef(link.PRRef)
+			repo := link.Repo
+			if repoOverride != "" {
+				repo = repoOverride
+			}
+			argsMerge := []string{"pr", "merge", pr, "--auto"}
+			switch method {
+			case "squash":
+				argsMerge = append(argsMerge, "--squash")
+			case "merge":
+				argsMerge = append(argsMerge, "--merge")
+			case "rebase":
+				argsMerge = append(argsMerge, "--rebase")
+			}
+			if repo != "" {
+				argsMerge = append(argsMerge, "--repo", repo)
+			}
+
+			raw, err := exec.CommandContext(ctx, "gh", argsMerge...).CombinedOutput()
+			if err != nil {
+				return fmt.Errorf("enable auto-merge failed: %s", strings.TrimSpace(string(raw)))
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "auto-merge enabled for pr %s (method=%s)\n", pr, method)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&method, "method", "squash", "Merge method: squash|merge|rebase")
+	cmd.Flags().StringVar(&repoOverride, "repo", "", "owner/name")
+	return cmd
+}
+
+func runGHWatchOnce(ctx context.Context, repo string, out io.Writer, seenFailures map[string]struct{}) error {
 	store, err := sqlite.Open(ctx)
 	if err != nil {
 		return err
@@ -146,6 +239,29 @@ func runGHWatchOnce(ctx context.Context, repo string, out io.Writer) error {
 	}
 
 	for _, link := range links {
+		checks, err := fetchPRChecks(ctx, link, repo)
+		if err != nil {
+			fmt.Fprintf(out, "checks error for %s (pr %s): %v\n", link.IssueID, link.PRRef, err)
+		} else {
+			for _, check := range checks {
+				if !isFailureState(check.State) {
+					continue
+				}
+				key := link.IssueID + "::" + check.Name + "::" + check.Link
+				if _, ok := seenFailures[key]; ok {
+					continue
+				}
+				seenFailures[key] = struct{}{}
+				fmt.Fprintf(out, "failure: %s (%s)\n", check.Name, check.Link)
+				logText, err := fetchFailureCheckLog(ctx, check, repoForLink(link, repo))
+				if err != nil {
+					fmt.Fprintf(out, "log fetch error: %v\n", err)
+					continue
+				}
+				fmt.Fprintf(out, "--- log: %s ---\n%s\n", check.Name, tailLines(logText, 200))
+			}
+		}
+
 		merged, err := fetchPRMerged(ctx, link, repo)
 		if err != nil {
 			return err
@@ -175,10 +291,7 @@ func runGHWatchOnce(ctx context.Context, repo string, out io.Writer) error {
 func fetchPRMerged(ctx context.Context, link sqlite.GitHubLink, repoOverride string) (bool, error) {
 	pr := normalizePRRef(link.PRRef)
 	args := []string{"pr", "view", pr, "--json", "state,mergedAt"}
-	repo := link.Repo
-	if repoOverride != "" {
-		repo = repoOverride
-	}
+	repo := repoForLink(link, repoOverride)
 	if repo != "" {
 		args = append(args, "--repo", repo)
 	}
@@ -196,6 +309,116 @@ func fetchPRMerged(ctx context.Context, link sqlite.GitHubLink, repoOverride str
 		return true, nil
 	}
 	return strings.EqualFold(state.State, "MERGED"), nil
+}
+
+func fetchPRChecks(ctx context.Context, link sqlite.GitHubLink, repoOverride string) ([]ghCheck, error) {
+	pr := normalizePRRef(link.PRRef)
+	args := []string{"pr", "checks", pr, "--json", "name,state,link"}
+	repo := repoForLink(link, repoOverride)
+	if repo != "" {
+		args = append(args, "--repo", repo)
+	}
+	raw, err := exec.CommandContext(ctx, "gh", args...).Output()
+	if err != nil {
+		return nil, fmt.Errorf("gh pr checks failed for %s: %w", pr, err)
+	}
+	var checks []ghCheck
+	if err := json.Unmarshal(raw, &checks); err != nil {
+		return nil, fmt.Errorf("decode gh checks response: %w", err)
+	}
+	return checks, nil
+}
+
+func fetchFailureCheckLog(ctx context.Context, check ghCheck, repo string) (string, error) {
+	runID, jobID, ok := parseRunAndJobFromCheckLink(check.Link)
+	if !ok {
+		return "", fmt.Errorf("unsupported check link: %s", check.Link)
+	}
+	args := []string{"run", "view", runID, "--log"}
+	if jobID != "" {
+		args = append(args, "--job", jobID)
+	}
+	if repo != "" {
+		args = append(args, "--repo", repo)
+	}
+	raw, err := exec.CommandContext(ctx, "gh", args...).CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("gh run view failed: %s", strings.TrimSpace(string(raw)))
+	}
+	return string(raw), nil
+}
+
+func parseRunAndJobFromCheckLink(link string) (runID string, jobID string, ok bool) {
+	m := ghRunLinkRe.FindStringSubmatch(link)
+	if len(m) != 3 {
+		return "", "", false
+	}
+	return m[1], m[2], true
+}
+
+func summarizeChecks(checks []ghCheck) string {
+	if len(checks) == 0 {
+		return "pending"
+	}
+	hasPending := false
+	for _, check := range checks {
+		if isFailureState(check.State) {
+			return "failure"
+		}
+		if isPendingState(check.State) {
+			hasPending = true
+		}
+	}
+	if hasPending {
+		return "pending"
+	}
+	return "success"
+}
+
+func isFailureState(state string) bool {
+	s := strings.ToLower(strings.TrimSpace(state))
+	switch s {
+	case "failure", "failed", "error", "timed_out", "cancelled", "action_required", "startup_failure":
+		return true
+	default:
+		return false
+	}
+}
+
+func isPendingState(state string) bool {
+	s := strings.ToLower(strings.TrimSpace(state))
+	switch s {
+	case "pending", "queued", "in_progress", "waiting", "requested":
+		return true
+	default:
+		return false
+	}
+}
+
+func repoForLink(link sqlite.GitHubLink, repoOverride string) string {
+	if repoOverride != "" {
+		return repoOverride
+	}
+	return link.Repo
+}
+
+func tailLines(raw string, n int) string {
+	raw = strings.TrimRight(raw, "\n")
+	if raw == "" {
+		return raw
+	}
+	lines := strings.Split(raw, "\n")
+	if len(lines) <= n {
+		return strings.Join(lines, "\n")
+	}
+	var buf bytes.Buffer
+	for i := len(lines) - n; i < len(lines); i++ {
+		if i > len(lines)-n {
+			buf.WriteByte('\n')
+		}
+		buf.WriteString(lines[i])
+	}
+	return buf.String()
 }
 
 func normalizePRRef(v string) string {
