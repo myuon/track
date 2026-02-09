@@ -130,13 +130,35 @@ func TestLabelsNextAndReorder(t *testing.T) {
 	if len(got.Labels) != 1 || got.Labels[0] != "ready" {
 		t.Fatalf("unexpected labels after add: %+v", got.Labels)
 	}
+	got, err = store.AddLabel(ctx, a.ID, "ready")
+	if err != nil {
+		t.Fatalf("AddLabel() duplicate error: %v", err)
+	}
+	if len(got.Labels) != 1 {
+		t.Fatalf("duplicate label should not be appended: %+v", got.Labels)
+	}
+
+	got, err = store.AddLabel(ctx, a.ID, "backend")
+	if err != nil {
+		t.Fatalf("AddLabel() second label error: %v", err)
+	}
+	if len(got.Labels) != 2 {
+		t.Fatalf("expected two labels after second add: %+v", got.Labels)
+	}
 
 	got, err = store.RemoveLabel(ctx, a.ID, "ready")
 	if err != nil {
 		t.Fatalf("RemoveLabel() error: %v", err)
 	}
+	if len(got.Labels) != 1 || got.Labels[0] != "backend" {
+		t.Fatalf("labels should keep backend after removing ready: %+v", got.Labels)
+	}
+	got, err = store.RemoveLabel(ctx, a.ID, "backend")
+	if err != nil {
+		t.Fatalf("RemoveLabel() backend error: %v", err)
+	}
 	if len(got.Labels) != 0 {
-		t.Fatalf("labels should be empty after remove: %+v", got.Labels)
+		t.Fatalf("labels should be empty after removing all: %+v", got.Labels)
 	}
 
 	got, err = store.SetNextAction(ctx, a.ID, "Write PR")

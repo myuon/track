@@ -7,7 +7,8 @@ Track is a local-first, CLI-first issue tracker.
 - Local SQLite storage (`~/.track/track.db`)
 - Issue lifecycle commands:
   - `new`, `list`, `show`, `edit`, `set`
-  - `label add/rm`, `next`, `done`, `archive`, `reorder`
+  - `label attach/detach` (and backward-compatible `label add/rm`)
+  - `next`, `done`, `archive`, `reorder`
 - Import/Export:
   - `export --format text|csv|jsonl`
   - `import --format text|csv|jsonl [--dry-run]`
@@ -33,9 +34,11 @@ go build -o track ./cmd/track
 ## Quick Start
 
 ```bash
-./track new "Add login page" --label ready --priority p1
+./track new "Add login page" --label ready --label backend --priority p1
 ./track list --status todo --sort priority
 ./track set I-000001 --status in_progress
+./track label attach I-000001 blocked needs-refine
+./track label detach I-000001 blocked
 ./track next I-000001 "Implement UI + validation"
 ./track done I-000001
 ```

@@ -309,49 +309,82 @@ func newLabelCmd() *cobra.Command {
 		Use:   "label",
 		Short: "Manage issue labels",
 	}
+
+	attachRunE := func(cmd *cobra.Command, args []string) error {
+		ctx := context.Background()
+		store, err := sqlite.Open(ctx)
+		if err != nil {
+			return err
+		}
+		defer store.Close()
+
+		updated, err := store.GetIssue(ctx, args[0])
+		if err != nil {
+			return err
+		}
+		for _, label := range args[1:] {
+			updated, err = store.AddLabel(ctx, args[0], label)
+			if err != nil {
+				return err
+			}
+		}
+		if err := hooks.RunEvent(ctx, store, hooks.IssueUpdated, updated.ID); err != nil {
+			return err
+		}
+		fmt.Fprintln(cmd.OutOrStdout(), "ok")
+		return nil
+	}
+
+	detachRunE := func(cmd *cobra.Command, args []string) error {
+		ctx := context.Background()
+		store, err := sqlite.Open(ctx)
+		if err != nil {
+			return err
+		}
+		defer store.Close()
+
+		updated, err := store.GetIssue(ctx, args[0])
+		if err != nil {
+			return err
+		}
+		for _, label := range args[1:] {
+			updated, err = store.RemoveLabel(ctx, args[0], label)
+			if err != nil {
+				return err
+			}
+		}
+		if err := hooks.RunEvent(ctx, store, hooks.IssueUpdated, updated.ID); err != nil {
+			return err
+		}
+		fmt.Fprintln(cmd.OutOrStdout(), "ok")
+		return nil
+	}
+
+	cmd.AddCommand(&cobra.Command{
+		Use:   "attach <id> <label> [label...]",
+		Short: "Attach one or more labels to issue",
+		Args:  cobra.MinimumNArgs(2),
+		RunE:  attachRunE,
+	})
+	cmd.AddCommand(&cobra.Command{
+		Use:   "detach <id> <label> [label...]",
+		Short: "Detach one or more labels from issue",
+		Args:  cobra.MinimumNArgs(2),
+		RunE:  detachRunE,
+	})
+
+	// Backward-compatible aliases.
 	cmd.AddCommand(&cobra.Command{
 		Use:   "add <id> <label>",
-		Short: "Add label to issue",
+		Short: "Alias of label attach",
 		Args:  cobra.ExactArgs(2),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := context.Background()
-			store, err := sqlite.Open(ctx)
-			if err != nil {
-				return err
-			}
-			defer store.Close()
-			updated, err := store.AddLabel(ctx, args[0], args[1])
-			if err != nil {
-				return err
-			}
-			if err := hooks.RunEvent(ctx, store, hooks.IssueUpdated, updated.ID); err != nil {
-				return err
-			}
-			fmt.Fprintln(cmd.OutOrStdout(), "ok")
-			return nil
-		},
+		RunE:  attachRunE,
 	})
 	cmd.AddCommand(&cobra.Command{
 		Use:   "rm <id> <label>",
-		Short: "Remove label from issue",
+		Short: "Alias of label detach",
 		Args:  cobra.ExactArgs(2),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := context.Background()
-			store, err := sqlite.Open(ctx)
-			if err != nil {
-				return err
-			}
-			defer store.Close()
-			updated, err := store.RemoveLabel(ctx, args[0], args[1])
-			if err != nil {
-				return err
-			}
-			if err := hooks.RunEvent(ctx, store, hooks.IssueUpdated, updated.ID); err != nil {
-				return err
-			}
-			fmt.Fprintln(cmd.OutOrStdout(), "ok")
-			return nil
-		},
+		RunE:  detachRunE,
 	})
 	return cmd
 }
