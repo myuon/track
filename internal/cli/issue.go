@@ -194,8 +194,9 @@ func newListCmd() *cobra.Command {
 				return err
 			}
 
+			c := newCLIColor(cmd.OutOrStdout())
 			for _, it := range items {
-				fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\t%s\t%s\t%s\n", it.ID, it.Status, it.Priority, it.Title, strings.Join(it.Labels, ","))
+				fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\t%s\t%s\t%s\n", it.ID, c.status(it.Status), c.priority(it.Priority), it.Title, strings.Join(it.Labels, ","))
 			}
 			return nil
 		},
@@ -228,10 +229,11 @@ func newShowCmd() *cobra.Command {
 				return err
 			}
 
+			c := newCLIColor(cmd.OutOrStdout())
 			fmt.Fprintf(cmd.OutOrStdout(), "id: %s\n", it.ID)
 			fmt.Fprintf(cmd.OutOrStdout(), "title: %s\n", it.Title)
-			fmt.Fprintf(cmd.OutOrStdout(), "status: %s\n", it.Status)
-			fmt.Fprintf(cmd.OutOrStdout(), "priority: %s\n", it.Priority)
+			fmt.Fprintf(cmd.OutOrStdout(), "status: %s\n", c.status(it.Status))
+			fmt.Fprintf(cmd.OutOrStdout(), "priority: %s\n", c.priority(it.Priority))
 			if it.Assignee != "" {
 				fmt.Fprintf(cmd.OutOrStdout(), "assignee: %s\n", it.Assignee)
 			}
