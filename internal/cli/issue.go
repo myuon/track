@@ -122,7 +122,7 @@ func newListCmd() *cobra.Command {
 			}
 
 			for _, it := range items {
-				fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\t%s\t%s\n", it.ID, it.Status, it.Priority, it.Title)
+				fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\t%s\t%s\t%s\n", it.ID, it.Status, it.Priority, it.Title, strings.Join(it.Labels, ","))
 			}
 			return nil
 		},
