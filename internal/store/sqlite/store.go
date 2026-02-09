@@ -90,6 +90,13 @@ func (s *Store) initSchema(ctx context.Context) error {
 			key TEXT PRIMARY KEY,
 			value TEXT NOT NULL
 		);`,
+		`CREATE TABLE IF NOT EXISTS github_links (
+			issue_id TEXT PRIMARY KEY,
+			pr_ref TEXT NOT NULL,
+			repo TEXT,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		);`,
 		`INSERT INTO meta(key, value) VALUES('next_issue_number', '1')
 		 ON CONFLICT(key) DO NOTHING;`,
 	}

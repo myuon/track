@@ -33,6 +33,7 @@ func newRootCmd() *cobra.Command {
 		cmd.AddCommand(c)
 	}
 	cmd.AddCommand(newHookCmd())
+	cmd.AddCommand(newGitHubCmd())
 
 	return cmd
 }
