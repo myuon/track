@@ -5,10 +5,12 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
 
+	appconfig "github.com/myuon/track/internal/config"
 	"github.com/myuon/track/internal/hooks"
 	"github.com/myuon/track/internal/issue"
 	"github.com/myuon/track/internal/store/sqlite"
@@ -644,11 +646,32 @@ func newPlanningCmd() *cobra.Command {
 }
 
 var planningSessionRunner = func(ctx context.Context, cmd *cobra.Command, issueID string) error {
-	c := exec.CommandContext(ctx, "./exec_codex", "plan", issueID)
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	prompt := buildPlanningPrompt(issueID)
+	args := []string{"exec", "-C", cwd}
+	trackHome, err := appconfig.HomeDir()
+	if err == nil && strings.TrimSpace(trackHome) != "" {
+		args = append(args, "--add-dir", trackHome)
+	}
+	args = append(args, prompt)
+	c := exec.CommandContext(ctx, "codex", args...)
+	if err == nil && strings.TrimSpace(trackHome) != "" {
+		c.Env = append(os.Environ(), "TRACK_HOME="+trackHome)
+	}
 	c.Stdin = cmd.InOrStdin()
 	c.Stdout = cmd.OutOrStdout()
 	c.Stderr = cmd.ErrOrStderr()
 	return c.Run()
+}
+
+func buildPlanningPrompt(issueID string) string {
+	return strings.TrimSpace(fmt.Sprintf(`
+$track-dev-cycle plan %s
+Plan mode requirements: (1) update issue body with an implementation-ready, testable Spec (e.g. under '## Spec'); (2) if questions remain, append them under '## Questions for user' in body; (3) set assignee to user for unresolved issues; (4) continue planning remaining issues without stopping.
+`, issueID))
 }
 
 func newReplyCmd() *cobra.Command {
