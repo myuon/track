@@ -11,6 +11,7 @@ Examples:
   ./exec_codex execution 12
   ./exec_codex execution TRK-12 "テストとコミットまで進めて"
   ./exec_codex 12
+  ./exec_codex --isolate 12
   ./exec_codex --full-auto 12
   ./exec_codex --sandbox workspace-write 12
 
@@ -21,6 +22,7 @@ Notes:
 
 Options:
   --sandbox <mode>    Override sandbox mode (read-only|workspace-write|danger-full-access)
+  --isolate           Run Codex in an isolated git worktree under .worktree/<issue-id>
   --full-auto         Use Codex --full-auto preset
   --bypass            Use --dangerously-bypass-approvals-and-sandbox
 EOF
@@ -39,6 +41,7 @@ fi
 repo_root="$(cd "$(dirname "$0")" && pwd)"
 
 sandbox_mode="danger-full-access"
+use_isolate="false"
 use_full_auto="false"
 use_bypass="false"
 mode="execution"
@@ -57,6 +60,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --full-auto)
       use_full_auto="true"
+      shift
+      ;;
+    --isolate)
+      use_isolate="true"
       shift
       ;;
     --bypass)
@@ -88,6 +95,42 @@ if [[ -z "$issue_id" ]]; then
   exit 1
 fi
 
+target_root="$repo_root"
+
+if [[ "$use_isolate" == "true" ]]; then
+  if ! command -v git >/dev/null 2>&1; then
+    echo "error: git command not found in PATH (required for --isolate)" >&2
+    exit 1
+  fi
+
+  issue_slug="$(printf '%s' "$issue_id" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9._-]+/-/g; s/^-+//; s/-+$//')"
+  if [[ -z "$issue_slug" ]]; then
+    echo "error: unable to derive worktree name from issue-id: $issue_id" >&2
+    exit 1
+  fi
+
+  worktree_dir="$repo_root/.worktree/$issue_slug"
+  worktree_branch="codex/$issue_slug"
+
+  mkdir -p "$repo_root/.worktree"
+
+  if [[ -d "$worktree_dir" ]]; then
+    if ! git -C "$worktree_dir" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+      echo "error: existing path is not a git worktree: $worktree_dir" >&2
+      exit 1
+    fi
+  else
+    if git -C "$repo_root" show-ref --verify --quiet "refs/heads/$worktree_branch"; then
+      git -C "$repo_root" worktree add "$worktree_dir" "$worktree_branch"
+    else
+      git -C "$repo_root" worktree add -b "$worktree_branch" "$worktree_dir" HEAD
+    fi
+  fi
+
+  target_root="$worktree_dir"
+  export CODEX_HOME="$worktree_dir/.codex-home"
+fi
+
 extra_prompt="${*:-}"
 
 prompt=$(
@@ -106,4 +149,4 @@ else
   codex_args+=(--sandbox "$sandbox_mode")
 fi
 
-exec codex exec -C "$repo_root" "${codex_args[@]}" "$prompt"
+exec codex exec -C "$target_root" "${codex_args[@]}" "$prompt"
