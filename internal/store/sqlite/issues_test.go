@@ -107,6 +107,46 @@ func TestListSortByPriority(t *testing.T) {
 	}
 }
 
+func TestListIssuesExcludeDoneAndArchived(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TRACK_HOME", tmp)
+
+	ctx := context.Background()
+	store, err := Open(ctx)
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	todoItem, _ := store.CreateIssue(ctx, issue.Item{Title: "todo", Status: issue.StatusTodo, Priority: "p2"})
+	_, _ = store.CreateIssue(ctx, issue.Item{Title: "done", Status: issue.StatusDone, Priority: "p2"})
+	archivedItem, _ := store.CreateIssue(ctx, issue.Item{Title: "archived", Status: issue.StatusArchived, Priority: "p2"})
+
+	items, err := store.ListIssues(ctx, ListFilter{ExcludeDone: true, ExcludeArchived: true, Sort: "manual"})
+	if err != nil {
+		t.Fatalf("ListIssues(exclude done/archived) error: %v", err)
+	}
+	if len(items) != 1 || items[0].ID != todoItem.ID {
+		t.Fatalf("unexpected items with exclusion: %+v", items)
+	}
+
+	items, err = store.ListIssues(ctx, ListFilter{Statuses: []string{issue.StatusArchived}})
+	if err != nil {
+		t.Fatalf("ListIssues(status archived) error: %v", err)
+	}
+	if len(items) != 1 || items[0].ID != archivedItem.ID {
+		t.Fatalf("archived status filter should return archived only: %+v", items)
+	}
+
+	items, err = store.ListIssues(ctx, ListFilter{Statuses: []string{issue.StatusTodo, issue.StatusInProgress, issue.StatusReady}})
+	if err != nil {
+		t.Fatalf("ListIssues(multi status) error: %v", err)
+	}
+	if len(items) != 1 || items[0].ID != todoItem.ID {
+		t.Fatalf("multi status should exclude done/archived by explicit statuses: %+v", items)
+	}
+}
+
 func TestLabelsNextAndReorder(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("TRACK_HOME", tmp)

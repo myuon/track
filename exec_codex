@@ -1,0 +1,109 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage:
+  ./exec_codex [options] <mode> <issue-id> [extra prompt...]
+  ./exec_codex [options] <issue-id> [extra prompt...]
+
+Examples:
+  ./exec_codex execution 12
+  ./exec_codex execution TRK-12 "テストとコミットまで進めて"
+  ./exec_codex 12
+  ./exec_codex --full-auto 12
+  ./exec_codex --sandbox workspace-write 12
+
+Notes:
+  - If mode is omitted, "execution" is used.
+  - issue-id accepts numeric form (e.g. 12) or canonical form (e.g. TRK-12).
+  - Default is "--sandbox danger-full-access" (GitHub access-friendly).
+
+Options:
+  --sandbox <mode>    Override sandbox mode (read-only|workspace-write|danger-full-access)
+  --full-auto         Use Codex --full-auto preset
+  --bypass            Use --dangerously-bypass-approvals-and-sandbox
+EOF
+}
+
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" || $# -lt 1 ]]; then
+  usage
+  exit 0
+fi
+
+if ! command -v codex >/dev/null 2>&1; then
+  echo "error: codex command not found in PATH" >&2
+  exit 1
+fi
+
+repo_root="$(cd "$(dirname "$0")" && pwd)"
+
+sandbox_mode="danger-full-access"
+use_full_auto="false"
+use_bypass="false"
+mode="execution"
+issue_id=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --sandbox)
+      if [[ $# -lt 2 ]]; then
+        echo "error: --sandbox requires a value" >&2
+        usage
+        exit 1
+      fi
+      sandbox_mode="$2"
+      shift 2
+      ;;
+    --full-auto)
+      use_full_auto="true"
+      shift
+      ;;
+    --bypass)
+      use_bypass="true"
+      shift
+      ;;
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+
+if [[ $# -ge 2 && ( "$1" == "plan" || "$1" == "execution" ) ]]; then
+  mode="$1"
+  issue_id="$2"
+  shift 2
+else
+  issue_id="$1"
+  shift 1
+fi
+
+if [[ -z "$issue_id" ]]; then
+  echo "error: issue-id is required" >&2
+  usage
+  exit 1
+fi
+
+extra_prompt="${*:-}"
+
+prompt=$(
+  cat <<EOF
+\$track-dev-cycle ${mode} ${issue_id}
+${extra_prompt}
+EOF
+)
+
+codex_args=()
+if [[ "$use_bypass" == "true" ]]; then
+  codex_args+=(--dangerously-bypass-approvals-and-sandbox)
+elif [[ "$use_full_auto" == "true" ]]; then
+  codex_args+=(--full-auto)
+else
+  codex_args+=(--sandbox "$sandbox_mode")
+fi
+
+exec codex exec -C "$repo_root" "${codex_args[@]}" "$prompt"
