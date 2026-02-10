@@ -101,7 +101,7 @@ func TestShowAcceptsNumericIssueID(t *testing.T) {
 	}
 }
 
-func TestListExcludesDoneByDefaultAndSupportsMultiStatus(t *testing.T) {
+func TestListExcludesDoneAndArchivedByDefaultAndSupportsStatusFilters(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("TRACK_HOME", tmp)
 
@@ -115,6 +115,7 @@ func TestListExcludesDoneByDefaultAndSupportsMultiStatus(t *testing.T) {
 	todoIssue, _ := store.CreateIssue(ctx, issue.Item{Title: "todo", Status: issue.StatusTodo, Priority: "p2"})
 	readyIssue, _ := store.CreateIssue(ctx, issue.Item{Title: "ready", Status: issue.StatusReady, Priority: "p2"})
 	doneIssue, _ := store.CreateIssue(ctx, issue.Item{Title: "finished", Status: issue.StatusDone, Priority: "p2"})
+	archivedIssue, _ := store.CreateIssue(ctx, issue.Item{Title: "archived", Status: issue.StatusArchived, Priority: "p2"})
 
 	cmd := newListCmd()
 	var out bytes.Buffer
@@ -132,21 +133,24 @@ func TestListExcludesDoneByDefaultAndSupportsMultiStatus(t *testing.T) {
 	if strings.Contains(out.String(), doneIssue.ID) {
 		t.Fatalf("default list should exclude done, got: %q", out.String())
 	}
+	if strings.Contains(out.String(), archivedIssue.ID) {
+		t.Fatalf("default list should exclude archived, got: %q", out.String())
+	}
 
 	out.Reset()
 	cmd = newListCmd()
 	cmd.SetOut(&out)
 	cmd.SetErr(&out)
-	cmd.SetArgs([]string{"--status", "done"})
+	cmd.SetArgs([]string{"--status", "archived"})
 	if err := cmd.Execute(); err != nil {
-		t.Fatalf("list --status done error: %v", err)
+		t.Fatalf("list --status archived error: %v", err)
 	}
 	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
 	if len(lines) != 2 {
-		t.Fatalf("--status done should include header + one row: %q", out.String())
+		t.Fatalf("--status archived should include header + one row: %q", out.String())
 	}
-	if lines[0] != formatIssueListRow("ID", "STATUS", "PRIORITY", "TITLE", "LABELS") || !strings.Contains(lines[1], doneIssue.ID) {
-		t.Fatalf("--status done should include only done: %q", out.String())
+	if lines[0] != formatIssueListRow("ID", "STATUS", "PRIORITY", "TITLE", "LABELS") || !strings.Contains(lines[1], archivedIssue.ID) {
+		t.Fatalf("--status archived should include only archived: %q", out.String())
 	}
 
 	out.Reset()
@@ -159,6 +163,9 @@ func TestListExcludesDoneByDefaultAndSupportsMultiStatus(t *testing.T) {
 	}
 	if strings.Contains(out.String(), doneIssue.ID) {
 		t.Fatalf("multi status should exclude done: %q", out.String())
+	}
+	if strings.Contains(out.String(), archivedIssue.ID) {
+		t.Fatalf("multi status should exclude archived: %q", out.String())
 	}
 }
 

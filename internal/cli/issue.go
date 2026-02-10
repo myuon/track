@@ -194,12 +194,13 @@ func newListCmd() *cobra.Command {
 			}
 
 			items, err := store.ListIssues(ctx, sqlite.ListFilter{
-				Statuses:    statuses,
-				ExcludeDone: len(statuses) == 0,
-				Label:       label,
-				Assignee:    issue.NormalizeAssignee(assignee),
-				Search:      search,
-				Sort:        sort,
+				Statuses:        statuses,
+				ExcludeDone:     len(statuses) == 0,
+				ExcludeArchived: len(statuses) == 0,
+				Label:           label,
+				Assignee:        issue.NormalizeAssignee(assignee),
+				Search:          search,
+				Sort:            sort,
 			})
 			if err != nil {
 				return err

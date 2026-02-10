@@ -13,12 +13,13 @@ import (
 )
 
 type ListFilter struct {
-	Statuses    []string
-	ExcludeDone bool
-	Label       string
-	Assignee    string
-	Search      string
-	Sort        string
+	Statuses        []string
+	ExcludeDone     bool
+	ExcludeArchived bool
+	Label           string
+	Assignee        string
+	Search          string
+	Sort            string
 }
 
 type UpdateIssueInput struct {
@@ -144,9 +145,15 @@ func (s *Store) ListIssues(ctx context.Context, f ListFilter) ([]issue.Item, err
 			args = append(args, st)
 		}
 		base += `)`
-	} else if f.ExcludeDone {
-		base += ` AND status <> ?`
-		args = append(args, issue.StatusDone)
+	} else {
+		if f.ExcludeDone {
+			base += ` AND status <> ?`
+			args = append(args, issue.StatusDone)
+		}
+		if f.ExcludeArchived {
+			base += ` AND status <> ?`
+			args = append(args, issue.StatusArchived)
+		}
 	}
 	if f.Assignee != "" {
 		base += ` AND assignee = ?`
