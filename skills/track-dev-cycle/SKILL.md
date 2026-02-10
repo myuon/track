@@ -42,11 +42,13 @@ For each issue:
 3. Persist plan spec in issue body.
    - Update `body` to include a concrete Spec that is implementation-ready and testable.
    - Keep existing useful context, but ensure the latest agreed Spec is clearly identifiable (for example, under `## Spec`).
-   - If readiness is not reached, still record clarified points, open questions, and assumptions in `body`.
+   - If readiness is not reached, append explicit user questions under `## Questions for user` in `body`.
+   - Keep unresolved assumptions and rationale in `body` so the next plan pass can continue without re-discovery.
 
 4. Update tracker state based on readiness.
    - If implementation can start immediately with no critical ambiguity, set status to `ready`.
-   - If deeper clarification is still needed, attach label `Need to discuss`.
+   - If deeper clarification is still needed, set assignee to `user` and keep status non-ready.
+   - Do not stop the overall planning run; continue to the next issue.
 
 5. Report outcome.
    - Summarize what was clarified, open questions (if any), and the tracker updates performed.
