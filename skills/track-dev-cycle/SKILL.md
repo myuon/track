@@ -39,11 +39,16 @@ For each issue:
    - Do not attach `Need to discuss` just to avoid deeper clarification work.
    - If the user explicitly wants to defer discussion or explicitly gives up on clarifying now, treat it as deferred and proceed with `Need to discuss`.
 
-3. Update tracker state based on readiness.
+3. Persist plan spec in issue body.
+   - Update `body` to include a concrete Spec that is implementation-ready and testable.
+   - Keep existing useful context, but ensure the latest agreed Spec is clearly identifiable (for example, under `## Spec`).
+   - If readiness is not reached, still record clarified points, open questions, and assumptions in `body`.
+
+4. Update tracker state based on readiness.
    - If implementation can start immediately with no critical ambiguity, set status to `ready`.
    - If deeper clarification is still needed, attach label `Need to discuss`.
 
-4. Report outcome.
+5. Report outcome.
    - Summarize what was clarified, open questions (if any), and the tracker updates performed.
 
 ## Execution Mode Workflow
@@ -97,6 +102,7 @@ track label attach <issue-id> "Need to discuss"
 
 - Never skip `track show` before changing tracker state.
 - Keep tracker history auditable with small, explicit updates.
+- In `plan` mode, do not finish without updating the issue `body` Spec.
 - Do not mark `ready` in plan mode while unresolved critical ambiguities remain.
 - Do not merge in execution mode before verification gates are satisfied.
 - If checks are intentionally failing due to WIP/red-phase work, commit only with an explicit note in the commit message.

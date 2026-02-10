@@ -18,6 +18,7 @@ Examples:
 Notes:
   - If mode is omitted, "execution" is used.
   - issue-id accepts numeric form (e.g. 12) or canonical form (e.g. TRK-12).
+  - "plan" mode launches interactive Codex CLI so user Q&A is handled in-session.
   - Default is "--sandbox danger-full-access" (GitHub access-friendly).
 
 Options:
@@ -132,10 +133,15 @@ if [[ "$use_isolate" == "true" ]]; then
 fi
 
 extra_prompt="${*:-}"
+plan_body_spec_instruction=""
+if [[ "$mode" == "plan" ]]; then
+  plan_body_spec_instruction="Plan mode requirement: update the issue body with an implementation-ready, testable Spec (e.g. under '## Spec') before finishing."
+fi
 
 prompt=$(
   cat <<EOF
 \$track-dev-cycle ${mode} ${issue_id}
+${plan_body_spec_instruction}
 ${extra_prompt}
 EOF
 )
@@ -147,6 +153,10 @@ elif [[ "$use_full_auto" == "true" ]]; then
   codex_args+=(--full-auto)
 else
   codex_args+=(--sandbox "$sandbox_mode")
+fi
+
+if [[ "$mode" == "plan" ]]; then
+  exec codex -C "$target_root" "${codex_args[@]}" "$prompt"
 fi
 
 exec codex exec -C "$target_root" "${codex_args[@]}" "$prompt"
