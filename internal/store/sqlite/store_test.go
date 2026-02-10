@@ -35,6 +35,34 @@ func TestOpenCreatesSchema(t *testing.T) {
 	}
 }
 
+func TestOpenAppliesSQLitePragmas(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TRACK_HOME", tmp)
+
+	ctx := context.Background()
+	store, err := Open(ctx)
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	var journalMode string
+	if err := store.db.QueryRowContext(ctx, `PRAGMA journal_mode;`).Scan(&journalMode); err != nil {
+		t.Fatalf("read journal_mode pragma: %v", err)
+	}
+	if journalMode != "wal" {
+		t.Fatalf("journal_mode = %q, want wal", journalMode)
+	}
+
+	var busyTimeout int
+	if err := store.db.QueryRowContext(ctx, `PRAGMA busy_timeout;`).Scan(&busyTimeout); err != nil {
+		t.Fatalf("read busy_timeout pragma: %v", err)
+	}
+	if busyTimeout < 5000 {
+		t.Fatalf("busy_timeout = %d, want >= 5000", busyTimeout)
+	}
+}
+
 func TestIsSQLiteRetryableErr(t *testing.T) {
 	if !isSQLiteRetryableErr(errors.New(`apply pragma "PRAGMA journal_mode=WAL;": unable to open database file (14)`)) {
 		t.Fatalf("unable to open database file should be retryable")
