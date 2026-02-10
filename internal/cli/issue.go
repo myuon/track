@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bufio"
 	"context"
 	"database/sql"
 	"fmt"
@@ -35,6 +36,7 @@ func newIssueCommands() []*cobra.Command {
 		newStatusCmd(),
 		newLabelCmd(),
 		newPlanningCmd(),
+		newReplyCmd(),
 		newNextCmd(),
 		newDoneCmd(),
 		newArchiveCmd(),
@@ -591,6 +593,7 @@ func newPlanningCmd() *cobra.Command {
 			} else {
 				items, err = store.ListIssues(ctx, sqlite.ListFilter{
 					Statuses: []string{issue.StatusTodo},
+					Assignee: "agent",
 					Sort:     "manual",
 				})
 				if err != nil {
@@ -646,6 +649,79 @@ var planningSessionRunner = func(ctx context.Context, cmd *cobra.Command, issueI
 	c.Stdout = cmd.OutOrStdout()
 	c.Stderr = cmd.ErrOrStderr()
 	return c.Run()
+}
+
+func newReplyCmd() *cobra.Command {
+	var message string
+
+	cmd := &cobra.Command{
+		Use:   "reply <id>",
+		Short: "Append user reply to issue body and assign back to agent",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := context.Background()
+			store, err := sqlite.Open(ctx)
+			if err != nil {
+				return err
+			}
+			defer store.Close()
+
+			issueID := normalizeIssueIDArg(args[0])
+			current, err := store.GetIssue(ctx, issueID)
+			if err != nil {
+				return err
+			}
+
+			replyText := strings.TrimSpace(message)
+			if replyText == "" {
+				fmt.Fprint(cmd.OutOrStdout(), "reply> ")
+				s := bufio.NewScanner(cmd.InOrStdin())
+				if !s.Scan() {
+					if err := s.Err(); err != nil {
+						return err
+					}
+					return fmt.Errorf("reply message is required")
+				}
+				replyText = strings.TrimSpace(s.Text())
+			}
+			if replyText == "" {
+				return fmt.Errorf("reply message is required")
+			}
+
+			body := appendReplyToBody(current.Body, replyText)
+			assignee := "agent"
+			updated, err := store.UpdateIssue(ctx, issueID, sqlite.UpdateIssueInput{
+				Body:     &body,
+				Assignee: &assignee,
+			})
+			if err != nil {
+				return err
+			}
+			if err := hooks.RunEvent(ctx, store, hooks.IssueUpdated, updated.ID); err != nil {
+				return err
+			}
+
+			fmt.Fprintln(cmd.OutOrStdout(), "ok")
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVarP(&message, "message", "m", "", "Reply message")
+	return cmd
+}
+
+func appendReplyToBody(body, reply string) string {
+	const header = "## User replies"
+	entry := "- " + strings.TrimSpace(reply)
+
+	body = strings.TrimRight(body, "\n")
+	if body == "" {
+		return header + "\n" + entry + "\n"
+	}
+	if strings.Contains(body, header) {
+		return body + "\n" + entry + "\n"
+	}
+	return body + "\n\n" + header + "\n" + entry + "\n"
 }
 
 func newDoneCmd() *cobra.Command {

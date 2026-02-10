@@ -400,14 +400,15 @@ func TestPlanningInteractiveUpdatesAndSkipsWithLimit(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 
-	first, err := store.CreateIssue(ctx, issue.Item{Title: "first", Status: issue.StatusTodo, Priority: "none"})
+	first, err := store.CreateIssue(ctx, issue.Item{Title: "first", Status: issue.StatusTodo, Priority: "none", Assignee: "agent"})
 	if err != nil {
 		t.Fatalf("CreateIssue(first) error: %v", err)
 	}
-	second, err := store.CreateIssue(ctx, issue.Item{Title: "second", Status: issue.StatusTodo, Priority: "none"})
+	second, err := store.CreateIssue(ctx, issue.Item{Title: "second", Status: issue.StatusTodo, Priority: "none", Assignee: "agent"})
 	if err != nil {
 		t.Fatalf("CreateIssue(second) error: %v", err)
 	}
+	_, _ = store.CreateIssue(ctx, issue.Item{Title: "not-assigned", Status: issue.StatusTodo, Priority: "none", Assignee: "user"})
 	_, _ = store.CreateIssue(ctx, issue.Item{Title: "in progress", Status: issue.StatusInProgress, Priority: "none"})
 
 	origRunner := planningSessionRunner
@@ -517,6 +518,45 @@ func TestPlanningByIDTargetsOnlySpecifiedIssue(t *testing.T) {
 	}
 }
 
+func TestPlanningDefaultTargetsOnlyTodoAssignedToAgent(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TRACK_HOME", tmp)
+
+	ctx := context.Background()
+	store, err := sqlite.Open(ctx)
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	agentTodo, err := store.CreateIssue(ctx, issue.Item{Title: "agent", Status: issue.StatusTodo, Priority: "none", Assignee: "agent"})
+	if err != nil {
+		t.Fatalf("CreateIssue(agentTodo) error: %v", err)
+	}
+	_, _ = store.CreateIssue(ctx, issue.Item{Title: "user", Status: issue.StatusTodo, Priority: "none", Assignee: "user"})
+	_, _ = store.CreateIssue(ctx, issue.Item{Title: "unassigned", Status: issue.StatusTodo, Priority: "none"})
+
+	origRunner := planningSessionRunner
+	t.Cleanup(func() { planningSessionRunner = origRunner })
+	called := make([]string, 0, 1)
+	planningSessionRunner = func(_ context.Context, _ *cobra.Command, issueID string) error {
+		called = append(called, issueID)
+		return nil
+	}
+
+	cmd := newPlanningCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("planning command error: %v", err)
+	}
+
+	if !slices.Equal(called, []string{agentTodo.ID}) {
+		t.Fatalf("planned issues = %v, want [%s]", called, agentTodo.ID)
+	}
+}
+
 func TestPlanningSkipsNonTodoIssue(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("TRACK_HOME", tmp)
@@ -557,5 +597,94 @@ func TestPlanningSkipsNonTodoIssue(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "updated: 0, skipped: 1\n") {
 		t.Fatalf("expected summary, got: %q", out.String())
+	}
+}
+
+func TestReplyAppendsBodyAndAssignsBackToAgentWithFlag(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TRACK_HOME", tmp)
+
+	ctx := context.Background()
+	store, err := sqlite.Open(ctx)
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	it, err := store.CreateIssue(ctx, issue.Item{
+		Title:    "questioned",
+		Status:   issue.StatusTodo,
+		Priority: "none",
+		Assignee: "user",
+		Body:     "## Questions for user\n- Q1",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue() error: %v", err)
+	}
+
+	cmd := newReplyCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{it.ID, "--message", "A1: use sqlite"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("reply command error: %v", err)
+	}
+	if strings.TrimSpace(out.String()) != "ok" {
+		t.Fatalf("unexpected output: %q", out.String())
+	}
+
+	got, err := store.GetIssue(ctx, it.ID)
+	if err != nil {
+		t.Fatalf("GetIssue() error: %v", err)
+	}
+	if got.Assignee != "agent" {
+		t.Fatalf("assignee = %q, want agent", got.Assignee)
+	}
+	if !strings.Contains(got.Body, "## User replies\n- A1: use sqlite\n") {
+		t.Fatalf("body missing reply section: %q", got.Body)
+	}
+}
+
+func TestReplyReadsMessageFromStdin(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TRACK_HOME", tmp)
+
+	ctx := context.Background()
+	store, err := sqlite.Open(ctx)
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	it, err := store.CreateIssue(ctx, issue.Item{
+		Title:    "questioned",
+		Status:   issue.StatusTodo,
+		Priority: "none",
+		Assignee: "user",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue() error: %v", err)
+	}
+
+	cmd := newReplyCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetIn(strings.NewReader("回答です\n"))
+	cmd.SetArgs([]string{it.ID})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("reply command error: %v", err)
+	}
+
+	got, err := store.GetIssue(ctx, it.ID)
+	if err != nil {
+		t.Fatalf("GetIssue() error: %v", err)
+	}
+	if got.Assignee != "agent" {
+		t.Fatalf("assignee = %q, want agent", got.Assignee)
+	}
+	if !strings.Contains(got.Body, "- 回答です\n") {
+		t.Fatalf("body missing reply entry: %q", got.Body)
 	}
 }
