@@ -55,6 +55,10 @@ func Open(ctx context.Context) (*Store, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("ping sqlite: %w", err)
 	}
+	if err := applySQLitePragmas(ctx, db); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
 
 	s := &Store{db: db}
 	if err := s.initSchema(ctx); err != nil {
