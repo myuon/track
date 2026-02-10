@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os/exec"
 	"strconv"
 	"strings"
 
@@ -33,6 +34,7 @@ func newIssueCommands() []*cobra.Command {
 		newSetCmd(),
 		newStatusCmd(),
 		newLabelCmd(),
+		newPlanningCmd(),
 		newNextCmd(),
 		newDoneCmd(),
 		newArchiveCmd(),
@@ -558,6 +560,92 @@ func newNextCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+func newPlanningCmd() *cobra.Command {
+	var limit int
+
+	cmd := &cobra.Command{
+		Use:   "planning [id]",
+		Short: "Interactively review todo issues and mark ready",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if limit < 0 {
+				return fmt.Errorf("limit must be >= 0")
+			}
+
+			ctx := context.Background()
+			store, err := sqlite.Open(ctx)
+			if err != nil {
+				return err
+			}
+			defer store.Close()
+
+			var items []issue.Item
+			if len(args) == 1 {
+				it, err := store.GetIssue(ctx, normalizeIssueIDArg(args[0]))
+				if err != nil {
+					return err
+				}
+				items = []issue.Item{it}
+			} else {
+				items, err = store.ListIssues(ctx, sqlite.ListFilter{
+					Statuses: []string{issue.StatusTodo},
+					Sort:     "manual",
+				})
+				if err != nil {
+					return err
+				}
+			}
+
+			if limit > 0 && len(items) > limit {
+				items = items[:limit]
+			}
+
+			updatedCount := 0
+			skippedCount := 0
+			out := cmd.OutOrStdout()
+
+			for _, it := range items {
+				if it.Status != issue.StatusTodo {
+					fmt.Fprintf(out, "%s skipped (status=%s)\n", it.ID, it.Status)
+					skippedCount++
+					continue
+				}
+
+				fmt.Fprintf(out, "planning session start: %s\n", it.ID)
+				if err := planningSessionRunner(ctx, cmd, it.ID); err != nil {
+					return err
+				}
+
+				updated, err := store.GetIssue(ctx, it.ID)
+				if err != nil {
+					return err
+				}
+				if updated.Status == issue.StatusReady {
+					updatedCount++
+					fmt.Fprintf(out, "%s updated to ready\n", it.ID)
+				} else {
+					skippedCount++
+					fmt.Fprintf(out, "%s skipped (status=%s)\n", it.ID, updated.Status)
+				}
+			}
+
+			fmt.Fprintf(out, "updated: %d, skipped: %d\n", updatedCount, skippedCount)
+			return nil
+		},
+	}
+
+	cmd.Flags().IntVar(&limit, "limit", 0, "Limit number of issues to process")
+	return cmd
+}
+
+var planningSessionRunner = func(ctx context.Context, cmd *cobra.Command, issueID string) error {
+	c := exec.CommandContext(ctx, "./exec_codex", "plan", issueID)
+	c.Stdin = cmd.InOrStdin()
+	c.Stdout = cmd.OutOrStdout()
+	c.Stderr = cmd.ErrOrStderr()
+	return c.Run()
 }
 
 func newDoneCmd() *cobra.Command {

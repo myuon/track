@@ -3,11 +3,13 @@ package cli
 import (
 	"bytes"
 	"context"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/myuon/track/internal/issue"
 	"github.com/myuon/track/internal/store/sqlite"
+	"github.com/spf13/cobra"
 )
 
 func TestListIncludesLabelsColumn(t *testing.T) {
@@ -384,5 +386,176 @@ func TestStatusCommandAndCustomStatusFlow(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), formatIssueListRow(it.ID, "blocked", "none", "blocked issue", "")) {
 		t.Fatalf("list should include custom status issue: %q", out.String())
+	}
+}
+
+func TestPlanningInteractiveUpdatesAndSkipsWithLimit(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TRACK_HOME", tmp)
+
+	ctx := context.Background()
+	store, err := sqlite.Open(ctx)
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	first, err := store.CreateIssue(ctx, issue.Item{Title: "first", Status: issue.StatusTodo, Priority: "none"})
+	if err != nil {
+		t.Fatalf("CreateIssue(first) error: %v", err)
+	}
+	second, err := store.CreateIssue(ctx, issue.Item{Title: "second", Status: issue.StatusTodo, Priority: "none"})
+	if err != nil {
+		t.Fatalf("CreateIssue(second) error: %v", err)
+	}
+	_, _ = store.CreateIssue(ctx, issue.Item{Title: "in progress", Status: issue.StatusInProgress, Priority: "none"})
+
+	origRunner := planningSessionRunner
+	t.Cleanup(func() { planningSessionRunner = origRunner })
+	called := make([]string, 0, 2)
+	plannedReady := map[string]bool{first.ID: true}
+	planningSessionRunner = func(_ context.Context, _ *cobra.Command, issueID string) error {
+		called = append(called, issueID)
+		if plannedReady[issueID] {
+			status := issue.StatusReady
+			if _, err := store.UpdateIssue(ctx, issueID, sqlite.UpdateIssueInput{Status: &status}); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	cmd := newPlanningCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"--limit", "2"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("planning command error: %v", err)
+	}
+	if !slices.Equal(called, []string{first.ID, second.ID}) {
+		t.Fatalf("planned issues = %v, want [%s %s]", called, first.ID, second.ID)
+	}
+
+	updatedFirst, err := store.GetIssue(ctx, first.ID)
+	if err != nil {
+		t.Fatalf("GetIssue(first) error: %v", err)
+	}
+	if updatedFirst.Status != issue.StatusReady {
+		t.Fatalf("first status = %q, want %q", updatedFirst.Status, issue.StatusReady)
+	}
+
+	updatedSecond, err := store.GetIssue(ctx, second.ID)
+	if err != nil {
+		t.Fatalf("GetIssue(second) error: %v", err)
+	}
+	if updatedSecond.Status != issue.StatusTodo {
+		t.Fatalf("second status = %q, want %q", updatedSecond.Status, issue.StatusTodo)
+	}
+
+	if !strings.Contains(out.String(), "updated: 1, skipped: 1\n") {
+		t.Fatalf("summary mismatch: %q", out.String())
+	}
+}
+
+func TestPlanningByIDTargetsOnlySpecifiedIssue(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TRACK_HOME", tmp)
+
+	ctx := context.Background()
+	store, err := sqlite.Open(ctx)
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	first, err := store.CreateIssue(ctx, issue.Item{Title: "first", Status: issue.StatusTodo, Priority: "none"})
+	if err != nil {
+		t.Fatalf("CreateIssue(first) error: %v", err)
+	}
+	second, err := store.CreateIssue(ctx, issue.Item{Title: "second", Status: issue.StatusTodo, Priority: "none"})
+	if err != nil {
+		t.Fatalf("CreateIssue(second) error: %v", err)
+	}
+
+	origRunner := planningSessionRunner
+	t.Cleanup(func() { planningSessionRunner = origRunner })
+	called := make([]string, 0, 1)
+	planningSessionRunner = func(_ context.Context, _ *cobra.Command, issueID string) error {
+		called = append(called, issueID)
+		status := issue.StatusReady
+		_, err := store.UpdateIssue(ctx, issueID, sqlite.UpdateIssueInput{Status: &status})
+		return err
+	}
+
+	cmd := newPlanningCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{second.ID})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("planning by id error: %v", err)
+	}
+	if !slices.Equal(called, []string{second.ID}) {
+		t.Fatalf("planned issues = %v, want [%s]", called, second.ID)
+	}
+
+	gotFirst, err := store.GetIssue(ctx, first.ID)
+	if err != nil {
+		t.Fatalf("GetIssue(first) error: %v", err)
+	}
+	if gotFirst.Status != issue.StatusTodo {
+		t.Fatalf("first status = %q, want %q", gotFirst.Status, issue.StatusTodo)
+	}
+
+	gotSecond, err := store.GetIssue(ctx, second.ID)
+	if err != nil {
+		t.Fatalf("GetIssue(second) error: %v", err)
+	}
+	if gotSecond.Status != issue.StatusReady {
+		t.Fatalf("second status = %q, want %q", gotSecond.Status, issue.StatusReady)
+	}
+}
+
+func TestPlanningSkipsNonTodoIssue(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TRACK_HOME", tmp)
+
+	ctx := context.Background()
+	store, err := sqlite.Open(ctx)
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	it, err := store.CreateIssue(ctx, issue.Item{Title: "ready issue", Status: issue.StatusReady, Priority: "none"})
+	if err != nil {
+		t.Fatalf("CreateIssue() error: %v", err)
+	}
+
+	origRunner := planningSessionRunner
+	t.Cleanup(func() { planningSessionRunner = origRunner })
+	called := false
+	planningSessionRunner = func(_ context.Context, _ *cobra.Command, _ string) error {
+		called = true
+		return nil
+	}
+
+	cmd := newPlanningCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{it.ID})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("planning non-todo error: %v", err)
+	}
+	if called {
+		t.Fatalf("planning session should not run for non-todo issue")
+	}
+	if !strings.Contains(out.String(), it.ID+" skipped (status="+issue.StatusReady+")\n") {
+		t.Fatalf("expected status skip message, got: %q", out.String())
+	}
+	if !strings.Contains(out.String(), "updated: 0, skipped: 1\n") {
+		t.Fatalf("expected summary, got: %q", out.String())
 	}
 }
