@@ -528,7 +528,7 @@ func newSetCmd() *cobra.Command {
 				return fmt.Errorf("no fields to update")
 			}
 
-			updated, err := store.UpdateIssue(ctx, args[0], in)
+			updated, err := store.UpdateIssue(ctx, normalizeIssueIDArg(args[0]), in)
 			if err != nil {
 				return err
 			}

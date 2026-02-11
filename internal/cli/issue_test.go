@@ -524,6 +524,44 @@ func TestSetSupportsTitleWithOtherFields(t *testing.T) {
 	}
 }
 
+func TestSetAcceptsNumericIssueID(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TRACK_HOME", tmp)
+
+	ctx := context.Background()
+	store, err := sqlite.Open(ctx)
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	it, err := store.CreateIssue(ctx, issue.Item{
+		Title:    "numeric id",
+		Status:   issue.StatusTodo,
+		Priority: "none",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue() error: %v", err)
+	}
+
+	cmd := newSetCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{strings.TrimPrefix(it.ID, "TRK-"), "--status", issue.StatusReady})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("set command error: %v", err)
+	}
+
+	got, err := store.GetIssue(ctx, it.ID)
+	if err != nil {
+		t.Fatalf("GetIssue() error: %v", err)
+	}
+	if got.Status != issue.StatusReady {
+		t.Fatalf("status = %q, want %q", got.Status, issue.StatusReady)
+	}
+}
+
 func TestNextShowsTopActionableIssue(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("TRACK_HOME", tmp)
