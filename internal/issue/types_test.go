@@ -3,6 +3,13 @@ package issue
 import "testing"
 
 func TestValidateStatusAndDue(t *testing.T) {
+	if err := ValidateTitle("hello"); err != nil {
+		t.Fatalf("expected valid title: %v", err)
+	}
+	if err := ValidateTitle(" \t "); err == nil {
+		t.Fatalf("expected invalid empty title error")
+	}
+
 	if err := ValidateStatus("todo"); err != nil {
 		t.Fatalf("expected valid status: %v", err)
 	}

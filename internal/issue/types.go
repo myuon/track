@@ -51,6 +51,13 @@ func ValidateStatus(v string) error {
 	return nil
 }
 
+func ValidateTitle(v string) error {
+	if strings.TrimSpace(v) == "" {
+		return fmt.Errorf("title must not be empty")
+	}
+	return nil
+}
+
 func ValidatePriority(v string) error {
 	if _, ok := validPriorities[v]; !ok {
 		return fmt.Errorf("invalid priority: %s", v)
