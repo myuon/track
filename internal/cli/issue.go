@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/mattn/go-runewidth"
 	appconfig "github.com/myuon/track/internal/config"
 	"github.com/myuon/track/internal/hooks"
 	"github.com/myuon/track/internal/issue"
@@ -26,25 +27,66 @@ const (
 )
 
 func formatIssueListRow(id, status, priority, title, labels string) string {
-	return fmt.Sprintf(
-		"%-*s %-*s %-*s %-*s %-*s",
-		listIDWidth, fitListColumn(id, listIDWidth),
-		listStatusWidth, fitListColumn(status, listStatusWidth),
-		listPriorityWidth, fitListColumn(priority, listPriorityWidth),
-		listTitleWidth, fitListColumn(title, listTitleWidth),
-		listLabelsWidth, fitListColumn(labels, listLabelsWidth),
-	)
+	parts := []string{
+		formatListColumn(id, listIDWidth),
+		formatListColumn(status, listStatusWidth),
+		formatListColumn(priority, listPriorityWidth),
+		formatListColumn(title, listTitleWidth),
+		formatListColumn(labels, listLabelsWidth),
+	}
+	return strings.Join(parts, " ")
 }
 
 func fitListColumn(v string, width int) string {
-	rs := []rune(v)
-	if len(rs) <= width {
+	if listDisplayWidth(v) <= width {
 		return v
 	}
 	if width <= 3 {
-		return string(rs[:width])
+		return truncateListColumn(v, width)
 	}
-	return string(rs[:width-3]) + "..."
+	return truncateListColumn(v, width-3) + "..."
+}
+
+func formatListColumn(v string, width int) string {
+	fit := fitListColumn(v, width)
+	padding := width - listDisplayWidth(fit)
+	if padding <= 0 {
+		return fit
+	}
+	return fit + strings.Repeat(" ", padding)
+}
+
+func truncateListColumn(v string, maxWidth int) string {
+	if maxWidth <= 0 {
+		return ""
+	}
+	var b strings.Builder
+	width := 0
+	for _, r := range v {
+		rw := listRuneWidth(r)
+		if width+rw > maxWidth {
+			break
+		}
+		b.WriteRune(r)
+		width += rw
+	}
+	return b.String()
+}
+
+func listDisplayWidth(v string) int {
+	width := 0
+	for _, r := range v {
+		width += listRuneWidth(r)
+	}
+	return width
+}
+
+func listRuneWidth(r rune) int {
+	w := runewidth.RuneWidth(r)
+	if w <= 0 {
+		return 0
+	}
+	return w
 }
 
 func newIssueCommands() []*cobra.Command {
