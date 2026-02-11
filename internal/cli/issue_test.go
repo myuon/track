@@ -68,6 +68,51 @@ func TestListIncludesLabelsColumn(t *testing.T) {
 	}
 }
 
+func TestListKeepsColumnsFixedWidthForLongValues(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TRACK_HOME", tmp)
+
+	ctx := context.Background()
+	store, err := sqlite.Open(ctx)
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	longTitle := strings.Repeat("title-", 20)
+	longLabels := []string{"alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta"}
+	_, err = store.CreateIssue(ctx, issue.Item{
+		Title:    longTitle,
+		Status:   issue.StatusTodo,
+		Priority: "p2",
+		Labels:   longLabels,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue(long values) error: %v", err)
+	}
+
+	cmd := newListCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"--sort", "manual"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("cmd.Execute() error: %v", err)
+	}
+
+	lines := strings.Split(strings.TrimRight(out.String(), "\n"), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("len(lines) = %d, want 2; out=%q", len(lines), out.String())
+	}
+	if len(lines[0]) != len(lines[1]) {
+		t.Fatalf("header and row should have equal width: header=%d row=%d out=%q", len(lines[0]), len(lines[1]), out.String())
+	}
+	if !strings.Contains(lines[1], "...") {
+		t.Fatalf("row should include truncated value marker, got: %q", lines[1])
+	}
+}
+
 func TestShowAcceptsNumericIssueID(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("TRACK_HOME", tmp)
