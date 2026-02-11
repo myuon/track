@@ -26,15 +26,53 @@ const (
 	listLabelsWidth   = 24
 )
 
+type issueListLayout struct {
+	idWidth       int
+	statusWidth   int
+	priorityWidth int
+	titleWidth    int
+	labelsWidth   int
+}
+
 func formatIssueListRow(id, status, priority, title, labels string) string {
+	layout := issueListLayout{
+		idWidth:       listIDWidth,
+		statusWidth:   listStatusWidth,
+		priorityWidth: listPriorityWidth,
+		titleWidth:    listTitleWidth,
+		labelsWidth:   listLabelsWidth,
+	}
+	return formatIssueListRowWithLayout(layout, id, status, priority, title, labels)
+}
+
+func formatIssueListRowWithLayout(layout issueListLayout, id, status, priority, title, labels string) string {
 	parts := []string{
-		formatListColumn(id, listIDWidth),
-		formatListColumn(status, listStatusWidth),
-		formatListColumn(priority, listPriorityWidth),
-		formatListColumn(title, listTitleWidth),
-		formatListColumn(labels, listLabelsWidth),
+		formatListColumn(id, layout.idWidth, true),
+		formatListColumn(status, layout.statusWidth, false),
+		formatListColumn(priority, layout.priorityWidth, false),
+		formatListColumn(title, layout.titleWidth, true),
+		formatListColumn(labels, layout.labelsWidth, true),
 	}
 	return strings.Join(parts, " ")
+}
+
+func issueListLayoutForItems(items []issue.Item) issueListLayout {
+	layout := issueListLayout{
+		idWidth:       listIDWidth,
+		statusWidth:   listDisplayWidth("STATUS"),
+		priorityWidth: listDisplayWidth("PRIORITY"),
+		titleWidth:    listTitleWidth,
+		labelsWidth:   listLabelsWidth,
+	}
+	for _, it := range items {
+		if w := listDisplayWidth(it.Status); w > layout.statusWidth {
+			layout.statusWidth = w
+		}
+		if w := listDisplayWidth(it.Priority); w > layout.priorityWidth {
+			layout.priorityWidth = w
+		}
+	}
+	return layout
 }
 
 func fitListColumn(v string, width int) string {
@@ -47,8 +85,11 @@ func fitListColumn(v string, width int) string {
 	return truncateListColumn(v, width-3) + "..."
 }
 
-func formatListColumn(v string, width int) string {
-	fit := fitListColumn(v, width)
+func formatListColumn(v string, width int, truncate bool) string {
+	fit := v
+	if truncate {
+		fit = fitListColumn(v, width)
+	}
 	padding := width - listDisplayWidth(fit)
 	if padding <= 0 {
 		return fit
@@ -274,9 +315,13 @@ func newListCmd() *cobra.Command {
 			}
 
 			c := newCLIColor(cmd.OutOrStdout())
-			fmt.Fprintln(cmd.OutOrStdout(), formatIssueListRow("ID", "STATUS", "PRIORITY", "TITLE", "LABELS"))
+			layout := issueListLayoutForItems(items)
+			fmt.Fprintln(cmd.OutOrStdout(), formatIssueListRowWithLayout(layout, "ID", "STATUS", "PRIORITY", "TITLE", "LABELS"))
 			for _, it := range items {
-				fmt.Fprintln(cmd.OutOrStdout(), formatIssueListRow(it.ID, c.status(it.Status), c.priority(it.Priority), it.Title, strings.Join(it.Labels, ",")))
+				fmt.Fprintln(
+					cmd.OutOrStdout(),
+					formatIssueListRowWithLayout(layout, it.ID, c.status(it.Status), c.priority(it.Priority), it.Title, strings.Join(it.Labels, ",")),
+				)
 			}
 			return nil
 		},
