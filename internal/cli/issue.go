@@ -280,6 +280,7 @@ func newListCmd() *cobra.Command {
 		label    string
 		assignee string
 		search   string
+		project  string
 		sort     string
 	)
 
@@ -308,6 +309,7 @@ func newListCmd() *cobra.Command {
 				Label:           label,
 				Assignee:        issue.NormalizeAssignee(assignee),
 				Search:          search,
+				Project:         project,
 				Sort:            sort,
 			})
 			if err != nil {
@@ -331,6 +333,7 @@ func newListCmd() *cobra.Command {
 	cmd.Flags().StringVar(&label, "label", "", "Label filter")
 	cmd.Flags().StringVar(&assignee, "assignee", "", "Assignee filter")
 	cmd.Flags().StringVar(&search, "search", "", "Search text")
+	cmd.Flags().StringVar(&project, "project", "", "Project filter")
 	cmd.Flags().StringVar(&sort, "sort", "updated", "Sort by priority|due|updated|manual")
 
 	return cmd
@@ -378,6 +381,13 @@ func newShowCmd() *cobra.Command {
 			if err == nil {
 				fmt.Fprintf(cmd.OutOrStdout(), "branch: %s\n", branchLink.BranchName)
 				fmt.Fprintf(cmd.OutOrStdout(), "merged: %s\n", branchMergeStatus(ctx, branchLink.BranchName))
+			}
+			projectKey, err := store.GetIssueProject(ctx, it.ID)
+			if err != nil {
+				return err
+			}
+			if projectKey != "" {
+				fmt.Fprintf(cmd.OutOrStdout(), "project: %s\n", projectKey)
 			}
 			if it.Body != "" {
 				fmt.Fprintf(cmd.OutOrStdout(), "body: %s\n", it.Body)
@@ -478,6 +488,7 @@ func newSetCmd() *cobra.Command {
 		due        string
 		assignee   string
 		nextAction string
+		project    string
 	)
 
 	cmd := &cobra.Command{
@@ -524,26 +535,41 @@ func newSetCmd() *cobra.Command {
 			if cmd.Flags().Changed("next-action") {
 				in.NextAction = &nextAction
 			}
-			if in.Title == nil && in.Status == nil && in.Priority == nil && in.Due == nil && in.Assignee == nil && in.NextAction == nil {
+			hasProjectUpdate := cmd.Flags().Changed("project")
+			if in.Title == nil && in.Status == nil && in.Priority == nil && in.Due == nil && in.Assignee == nil && in.NextAction == nil && !hasProjectUpdate {
 				return fmt.Errorf("no fields to update")
 			}
 
-			updated, err := store.UpdateIssue(ctx, normalizeIssueIDArg(args[0]), in)
-			if err != nil {
-				return err
-			}
-			if err := hooks.RunEvent(ctx, store, hooks.IssueUpdated, updated.ID); err != nil {
-				return err
-			}
-			if in.Status != nil {
-				if err := hooks.RunEvent(ctx, store, hooks.IssueStatusChange, updated.ID); err != nil {
+			issueID := normalizeIssueIDArg(args[0])
+			updatedIssueID := issueID
+			if in.Title != nil || in.Status != nil || in.Priority != nil || in.Due != nil || in.Assignee != nil || in.NextAction != nil {
+				updated, err := store.UpdateIssue(ctx, issueID, in)
+				if err != nil {
 					return err
 				}
-				if *in.Status == issue.StatusDone {
-					if err := hooks.RunEvent(ctx, store, hooks.IssueCompleted, updated.ID); err != nil {
+				updatedIssueID = updated.ID
+				if in.Status != nil {
+					if err := hooks.RunEvent(ctx, store, hooks.IssueStatusChange, updated.ID); err != nil {
 						return err
 					}
+					if *in.Status == issue.StatusDone {
+						if err := hooks.RunEvent(ctx, store, hooks.IssueCompleted, updated.ID); err != nil {
+							return err
+						}
+					}
 				}
+			}
+			if hasProjectUpdate {
+				projectValue := strings.TrimSpace(project)
+				if projectValue == "none" {
+					projectValue = ""
+				}
+				if err := store.SetIssueProject(ctx, issueID, projectValue); err != nil {
+					return err
+				}
+			}
+			if err := hooks.RunEvent(ctx, store, hooks.IssueUpdated, updatedIssueID); err != nil {
+				return err
 			}
 			fmt.Fprintln(cmd.OutOrStdout(), "ok")
 			return nil
@@ -556,6 +582,7 @@ func newSetCmd() *cobra.Command {
 	cmd.Flags().StringVar(&due, "due", "", "Due date")
 	cmd.Flags().StringVar(&assignee, "assignee", "", "Assignee")
 	cmd.Flags().StringVar(&nextAction, "next-action", "", "Next action")
+	cmd.Flags().StringVar(&project, "project", "", "Project key or none")
 
 	return cmd
 }
