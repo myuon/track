@@ -37,6 +37,7 @@ func newRootCmd() *cobra.Command {
 	cmd.AddCommand(newGitHubCmd())
 	cmd.AddCommand(newDispatchCmd())
 	cmd.AddCommand(newUICmd())
+	cmd.AddCommand(newProjectCmd())
 
 	return cmd
 }

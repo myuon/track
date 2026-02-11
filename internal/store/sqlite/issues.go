@@ -19,6 +19,7 @@ type ListFilter struct {
 	Label           string
 	Assignee        string
 	Search          string
+	Project         string
 	Sort            string
 }
 
@@ -167,6 +168,10 @@ func (s *Store) ListIssues(ctx context.Context, f ListFilter) ([]issue.Item, err
 	if f.Label != "" {
 		base += ` AND labels_json LIKE ?`
 		args = append(args, "%\""+f.Label+"\"%")
+	}
+	if f.Project != "" {
+		base += ` AND EXISTS (SELECT 1 FROM project_issue_links pil WHERE pil.issue_id = issues.id AND pil.project_key = ?)`
+		args = append(args, f.Project)
 	}
 
 	sort := strings.ToLower(f.Sort)

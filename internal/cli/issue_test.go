@@ -562,6 +562,114 @@ func TestSetAcceptsNumericIssueID(t *testing.T) {
 	}
 }
 
+func TestSetSupportsProjectAndShowDisplaysProject(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TRACK_HOME", tmp)
+
+	ctx := context.Background()
+	store, err := sqlite.Open(ctx)
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	it, err := store.CreateIssue(ctx, issue.Item{
+		Title:    "project link",
+		Status:   issue.StatusTodo,
+		Priority: "none",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue() error: %v", err)
+	}
+	if _, err := store.CreateProject(ctx, "cli-refresh", "CLI Refresh", ""); err != nil {
+		t.Fatalf("CreateProject() error: %v", err)
+	}
+
+	setCmd := newSetCmd()
+	var out bytes.Buffer
+	setCmd.SetOut(&out)
+	setCmd.SetErr(&out)
+	setCmd.SetArgs([]string{it.ID, "--project", "cli-refresh"})
+	if err := setCmd.Execute(); err != nil {
+		t.Fatalf("set --project error: %v", err)
+	}
+
+	showCmd := newShowCmd()
+	out.Reset()
+	showCmd.SetOut(&out)
+	showCmd.SetErr(&out)
+	showCmd.SetArgs([]string{it.ID})
+	if err := showCmd.Execute(); err != nil {
+		t.Fatalf("show error: %v", err)
+	}
+	if !strings.Contains(out.String(), "project: cli-refresh\n") {
+		t.Fatalf("show should include project, got: %q", out.String())
+	}
+
+	setCmd = newSetCmd()
+	out.Reset()
+	setCmd.SetOut(&out)
+	setCmd.SetErr(&out)
+	setCmd.SetArgs([]string{it.ID, "--project", "none"})
+	if err := setCmd.Execute(); err != nil {
+		t.Fatalf("set --project none error: %v", err)
+	}
+
+	showCmd = newShowCmd()
+	out.Reset()
+	showCmd.SetOut(&out)
+	showCmd.SetErr(&out)
+	showCmd.SetArgs([]string{it.ID})
+	if err := showCmd.Execute(); err != nil {
+		t.Fatalf("show after unlink error: %v", err)
+	}
+	if strings.Contains(out.String(), "project: ") {
+		t.Fatalf("show should omit project after unlink, got: %q", out.String())
+	}
+}
+
+func TestListSupportsProjectFilter(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TRACK_HOME", tmp)
+
+	ctx := context.Background()
+	store, err := sqlite.Open(ctx)
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	if _, err := store.CreateProject(ctx, "cli-refresh", "CLI Refresh", ""); err != nil {
+		t.Fatalf("CreateProject() error: %v", err)
+	}
+	inProject, err := store.CreateIssue(ctx, issue.Item{Title: "in", Status: issue.StatusTodo, Priority: "p2"})
+	if err != nil {
+		t.Fatalf("CreateIssue(in) error: %v", err)
+	}
+	outProject, err := store.CreateIssue(ctx, issue.Item{Title: "out", Status: issue.StatusTodo, Priority: "p2"})
+	if err != nil {
+		t.Fatalf("CreateIssue(out) error: %v", err)
+	}
+	if err := store.SetIssueProject(ctx, inProject.ID, "cli-refresh"); err != nil {
+		t.Fatalf("SetIssueProject() error: %v", err)
+	}
+
+	cmd := newListCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"--project", "cli-refresh", "--sort", "manual"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("list --project error: %v", err)
+	}
+	if !strings.Contains(out.String(), inProject.ID) {
+		t.Fatalf("list should include linked issue, got: %q", out.String())
+	}
+	if strings.Contains(out.String(), outProject.ID) {
+		t.Fatalf("list should exclude non-linked issue, got: %q", out.String())
+	}
+}
+
 func TestNextShowsTopActionableIssue(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("TRACK_HOME", tmp)

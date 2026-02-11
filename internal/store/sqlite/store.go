@@ -119,6 +119,19 @@ func (s *Store) initSchema(ctx context.Context) error {
 			created_at TEXT NOT NULL,
 			updated_at TEXT NOT NULL
 		);`,
+		`CREATE TABLE IF NOT EXISTS projects (
+			key TEXT PRIMARY KEY,
+			name TEXT NOT NULL,
+			description TEXT,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		);`,
+		`CREATE TABLE IF NOT EXISTS project_issue_links (
+			issue_id TEXT PRIMARY KEY,
+			project_key TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		);`,
 		`INSERT INTO statuses(name, system, created_at, updated_at)
 		 VALUES('todo', 1, datetime('now'), datetime('now'))
 		 ON CONFLICT(name) DO NOTHING;`,
