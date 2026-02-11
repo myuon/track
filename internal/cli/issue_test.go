@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/myuon/track/internal/issue"
 	"github.com/myuon/track/internal/store/sqlite"
@@ -105,12 +106,77 @@ func TestListKeepsColumnsFixedWidthForLongValues(t *testing.T) {
 	if len(lines) != 2 {
 		t.Fatalf("len(lines) = %d, want 2; out=%q", len(lines), out.String())
 	}
-	if len(lines[0]) != len(lines[1]) {
-		t.Fatalf("header and row should have equal width: header=%d row=%d out=%q", len(lines[0]), len(lines[1]), out.String())
+	if listDisplayWidth(lines[0]) != listDisplayWidth(lines[1]) {
+		t.Fatalf("header and row should have equal display width: header=%d row=%d out=%q", listDisplayWidth(lines[0]), listDisplayWidth(lines[1]), out.String())
 	}
 	if !strings.Contains(lines[1], "...") {
 		t.Fatalf("row should include truncated value marker, got: %q", lines[1])
 	}
+}
+
+func TestFormatIssueListRowMixedWidthLayout(t *testing.T) {
+	row := formatIssueListRow(
+		"TRK-1",
+		"todo",
+		"p2",
+		"日本語ABC日本語ABC日本語ABC日本語ABC日本語ABC日本語ABC日本語ABC",
+		"label,日本語",
+	)
+	widths := []int{listIDWidth, listStatusWidth, listPriorityWidth, listTitleWidth, listLabelsWidth}
+	cols, ok := splitListRowColumnsByWidth(row, widths)
+	if !ok {
+		t.Fatalf("row should match fixed-width layout, row=%q", row)
+	}
+	if got, want := listDisplayWidth(row), listIDWidth+listStatusWidth+listPriorityWidth+listTitleWidth+listLabelsWidth+4; got != want {
+		t.Fatalf("row display width = %d, want %d; row=%q", got, want, row)
+	}
+	if !strings.HasSuffix(strings.TrimRight(cols[3], " "), "...") {
+		t.Fatalf("title column should be truncated with ellipsis: %q", cols[3])
+	}
+	if !strings.Contains(cols[4], "label") {
+		t.Fatalf("labels column should remain visible, got=%q", cols[4])
+	}
+}
+
+func splitListRowColumnsByWidth(row string, widths []int) ([]string, bool) {
+	cols := make([]string, 0, len(widths))
+	rest := row
+	for i, width := range widths {
+		col, next, ok := takeDisplayWidth(rest, width)
+		if !ok {
+			return nil, false
+		}
+		cols = append(cols, col)
+		rest = next
+		if i == len(widths)-1 {
+			continue
+		}
+		if rest == "" || rest[0] != ' ' {
+			return nil, false
+		}
+		rest = rest[1:]
+	}
+	return cols, rest == ""
+}
+
+func takeDisplayWidth(s string, width int) (string, string, bool) {
+	if width == 0 {
+		return "", s, true
+	}
+	current := 0
+	end := 0
+	for i, r := range s {
+		rw := listRuneWidth(r)
+		if current+rw > width {
+			break
+		}
+		current += rw
+		end = i + utf8.RuneLen(r)
+		if current == width {
+			return s[:end], s[end:], true
+		}
+	}
+	return "", "", false
 }
 
 func TestShowAcceptsNumericIssueID(t *testing.T) {
