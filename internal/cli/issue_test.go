@@ -407,6 +407,123 @@ func TestSetSupportsNextAction(t *testing.T) {
 	}
 }
 
+func TestSetSupportsTitle(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TRACK_HOME", tmp)
+
+	ctx := context.Background()
+	store, err := sqlite.Open(ctx)
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	it, err := store.CreateIssue(ctx, issue.Item{
+		Title:    "old title",
+		Status:   issue.StatusTodo,
+		Priority: "none",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue() error: %v", err)
+	}
+
+	cmd := newSetCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{it.ID, "--title", "new title"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("set command error: %v", err)
+	}
+
+	got, err := store.GetIssue(ctx, it.ID)
+	if err != nil {
+		t.Fatalf("GetIssue() error: %v", err)
+	}
+	if got.Title != "new title" {
+		t.Fatalf("title = %q, want %q", got.Title, "new title")
+	}
+}
+
+func TestSetRejectsEmptyTitle(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TRACK_HOME", tmp)
+
+	ctx := context.Background()
+	store, err := sqlite.Open(ctx)
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	it, err := store.CreateIssue(ctx, issue.Item{
+		Title:    "old title",
+		Status:   issue.StatusTodo,
+		Priority: "none",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue() error: %v", err)
+	}
+
+	cmd := newSetCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{it.ID, "--title", ""})
+	if err := cmd.Execute(); err == nil {
+		t.Fatalf("set command should fail for empty title")
+	}
+
+	got, err := store.GetIssue(ctx, it.ID)
+	if err != nil {
+		t.Fatalf("GetIssue() error: %v", err)
+	}
+	if got.Title != "old title" {
+		t.Fatalf("title = %q, want %q", got.Title, "old title")
+	}
+}
+
+func TestSetSupportsTitleWithOtherFields(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TRACK_HOME", tmp)
+
+	ctx := context.Background()
+	store, err := sqlite.Open(ctx)
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	it, err := store.CreateIssue(ctx, issue.Item{
+		Title:    "old title",
+		Status:   issue.StatusTodo,
+		Priority: "none",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue() error: %v", err)
+	}
+
+	cmd := newSetCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{it.ID, "--title", "new title", "--next-action", "Write tests"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("set command error: %v", err)
+	}
+
+	got, err := store.GetIssue(ctx, it.ID)
+	if err != nil {
+		t.Fatalf("GetIssue() error: %v", err)
+	}
+	if got.Title != "new title" {
+		t.Fatalf("title = %q, want %q", got.Title, "new title")
+	}
+	if got.NextAction != "Write tests" {
+		t.Fatalf("next_action = %q, want %q", got.NextAction, "Write tests")
+	}
+}
+
 func TestNextShowsTopActionableIssue(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("TRACK_HOME", tmp)

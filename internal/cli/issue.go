@@ -472,6 +472,7 @@ func newEditCmd() *cobra.Command {
 
 func newSetCmd() *cobra.Command {
 	var (
+		title      string
 		status     string
 		priority   string
 		due        string
@@ -492,6 +493,12 @@ func newSetCmd() *cobra.Command {
 			defer store.Close()
 
 			var in sqlite.UpdateIssueInput
+			if cmd.Flags().Changed("title") {
+				if err := issue.ValidateTitle(title); err != nil {
+					return err
+				}
+				in.Title = &title
+			}
 			if cmd.Flags().Changed("status") {
 				if err := store.ValidateStatus(ctx, status); err != nil {
 					return err
@@ -517,7 +524,7 @@ func newSetCmd() *cobra.Command {
 			if cmd.Flags().Changed("next-action") {
 				in.NextAction = &nextAction
 			}
-			if in.Status == nil && in.Priority == nil && in.Due == nil && in.Assignee == nil && in.NextAction == nil {
+			if in.Title == nil && in.Status == nil && in.Priority == nil && in.Due == nil && in.Assignee == nil && in.NextAction == nil {
 				return fmt.Errorf("no fields to update")
 			}
 
@@ -543,6 +550,7 @@ func newSetCmd() *cobra.Command {
 		},
 	}
 
+	cmd.Flags().StringVar(&title, "title", "", "Title")
 	cmd.Flags().StringVar(&status, "status", "", "Status")
 	cmd.Flags().StringVar(&priority, "priority", "", "Priority")
 	cmd.Flags().StringVar(&due, "due", "", "Due date")
