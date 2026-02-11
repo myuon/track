@@ -11,8 +11,8 @@ Track is a local-first, CLI-first issue tracker.
   - `label attach/detach` (and backward-compatible `label add/rm`)
   - `next`, `done`, `archive`, `reorder`
 - Import/Export:
-  - `export --format text|csv|jsonl`
-  - `import --format text|csv|jsonl [--dry-run]`
+  - `export --format text|csv|json|jsonl`
+  - `import --format text|csv|json|jsonl [--dry-run]`
 - Hooks:
   - `hook add/list/rm/test`
   - events: `issue.created`, `issue.updated`, `issue.status_changed`, `issue.completed`, `sync.completed`

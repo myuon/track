@@ -52,6 +52,8 @@ func newExportCmd() *cobra.Command {
 				return writeTextExport(cmd.OutOrStdout(), items)
 			case "csv":
 				return writeCSVExport(cmd.OutOrStdout(), items)
+			case "json":
+				return writeJSONExport(cmd.OutOrStdout(), items)
 			case "jsonl":
 				return writeJSONLExport(cmd.OutOrStdout(), items)
 			default:
@@ -60,7 +62,7 @@ func newExportCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&format, "format", "text", "Export format: text|csv|jsonl")
+	cmd.Flags().StringVar(&format, "format", "text", "Export format: text|csv|json|jsonl")
 	cmd.Flags().StringVar(&status, "status", "", "Status filter")
 	cmd.Flags().StringVar(&label, "label", "", "Label filter")
 	return cmd
@@ -71,7 +73,7 @@ func newImportCmd() *cobra.Command {
 	var dryRun bool
 
 	cmd := &cobra.Command{
-		Use:   "import --format text|csv|jsonl <path>",
+		Use:   "import --format text|csv|json|jsonl <path>",
 		Short: "Import issues",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -113,7 +115,7 @@ func newImportCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&format, "format", "text", "Import format: text|csv|jsonl")
+	cmd.Flags().StringVar(&format, "format", "text", "Import format: text|csv|json|jsonl")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Validate input without writing")
 	return cmd
 }
@@ -152,12 +154,19 @@ func writeJSONLExport(out io.Writer, items []issue.Item) error {
 	return nil
 }
 
+func writeJSONExport(out io.Writer, items []issue.Item) error {
+	enc := json.NewEncoder(out)
+	return enc.Encode(items)
+}
+
 func readImport(format string, in io.Reader) ([]issue.Item, error) {
 	switch format {
 	case "text":
 		return readTextImport(in)
 	case "csv":
 		return readCSVImport(in)
+	case "json":
+		return readJSONImport(in)
 	case "jsonl":
 		return readJSONLImport(in)
 	default:
@@ -244,6 +253,22 @@ func readJSONLImport(in io.Reader) ([]issue.Item, error) {
 		items = append(items, it)
 	}
 	if err := s.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+func readJSONImport(in io.Reader) ([]issue.Item, error) {
+	dec := json.NewDecoder(in)
+	var items []issue.Item
+	if err := dec.Decode(&items); err != nil {
+		return nil, err
+	}
+	var extra json.RawMessage
+	if err := dec.Decode(&extra); err != io.EOF {
+		if err == nil {
+			return nil, fmt.Errorf("invalid json import: multiple top-level JSON values")
+		}
 		return nil, err
 	}
 	return items, nil
