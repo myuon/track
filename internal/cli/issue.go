@@ -22,10 +22,29 @@ const (
 	listStatusWidth   = 12
 	listPriorityWidth = 10
 	listTitleWidth    = 50
+	listLabelsWidth   = 24
 )
 
 func formatIssueListRow(id, status, priority, title, labels string) string {
-	return fmt.Sprintf("%-*s %-*s %-*s %-*s %s", listIDWidth, id, listStatusWidth, status, listPriorityWidth, priority, listTitleWidth, title, labels)
+	return fmt.Sprintf(
+		"%-*s %-*s %-*s %-*s %-*s",
+		listIDWidth, fitListColumn(id, listIDWidth),
+		listStatusWidth, fitListColumn(status, listStatusWidth),
+		listPriorityWidth, fitListColumn(priority, listPriorityWidth),
+		listTitleWidth, fitListColumn(title, listTitleWidth),
+		listLabelsWidth, fitListColumn(labels, listLabelsWidth),
+	)
+}
+
+func fitListColumn(v string, width int) string {
+	rs := []rune(v)
+	if len(rs) <= width {
+		return v
+	}
+	if width <= 3 {
+		return string(rs[:width])
+	}
+	return string(rs[:width-3]) + "..."
 }
 
 func newIssueCommands() []*cobra.Command {
