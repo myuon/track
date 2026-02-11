@@ -7,6 +7,19 @@ description: "Run a full development cycle for `track` issues in two modes: `pla
 
 Follow this skill to process one or more issue IDs end-to-end with `track`.
 
+## Work Procedure by Status
+
+When an issue is received, start from actions based on its current status.
+
+- `todo`:
+  Collaborate with the user to finalize implementation-ready spec details, including DoD/AC. Resolve open questions so another agent can complete the work from the issue alone. Define clear completion criteria and, when possible, verification steps. Once Spec is written and stable, move status to `ready`.
+- `ready`:
+  Create a dedicated worktree for the issue using git worktree. Then run dispatch to delegate implementation to the agent. After kickoff is complete, set status to `in_progress`.
+- `in_progress`:
+  Monitor the agent run until completion. If execution cannot continue, assess the situation and take over implementation as needed. After work is done, run the `commit` skill and create a PR via `gh`. Then set status to `finished`.
+- `finished`:
+  Watch PR CI status. If CI fails, investigate and fix the cause. After CI passes, merge the PR, remove the issue worktree, and set status to `done`.
+
 ## Input Contract
 
 - Accept mode plus one or more issue IDs.
