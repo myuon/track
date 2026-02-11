@@ -56,15 +56,19 @@ func TestListIncludesLabelsColumn(t *testing.T) {
 	if len(lines) != 3 {
 		t.Fatalf("len(lines) = %d, want 3; out=%q", len(lines), out.String())
 	}
-	if lines[0] != formatIssueListRow("ID", "STATUS", "PRIORITY", "TITLE", "LABELS") {
+	layout := issueListLayoutForItems([]issue.Item{
+		{Status: issue.StatusTodo, Priority: "p2"},
+		{Status: issue.StatusTodo, Priority: "p2"},
+	})
+	if lines[0] != formatIssueListRowWithLayout(layout, "ID", "STATUS", "PRIORITY", "TITLE", "LABELS") {
 		t.Fatalf("unexpected header: %q", lines[0])
 	}
 
-	if lines[1] != formatIssueListRow("TRK-1", "todo", "p2", "With labels", "ready,ui") {
+	if lines[1] != formatIssueListRowWithLayout(layout, "TRK-1", "todo", "p2", "With labels", "ready,ui") {
 		t.Fatalf("first line unexpected: %q", lines[1])
 	}
 
-	if lines[2] != formatIssueListRow("TRK-2", "todo", "p2", "No labels", "") {
+	if lines[2] != formatIssueListRowWithLayout(layout, "TRK-2", "todo", "p2", "No labels", "") {
 		t.Fatalf("second line unexpected: %q", lines[2])
 	}
 }
@@ -115,14 +119,22 @@ func TestListKeepsColumnsFixedWidthForLongValues(t *testing.T) {
 }
 
 func TestFormatIssueListRowMixedWidthLayout(t *testing.T) {
-	row := formatIssueListRow(
+	layout := issueListLayout{
+		idWidth:       listIDWidth,
+		statusWidth:   listStatusWidth,
+		priorityWidth: listPriorityWidth,
+		titleWidth:    listTitleWidth,
+		labelsWidth:   listLabelsWidth,
+	}
+	row := formatIssueListRowWithLayout(
+		layout,
 		"TRK-1",
 		"todo",
 		"p2",
 		"日本語ABC日本語ABC日本語ABC日本語ABC日本語ABC日本語ABC日本語ABC",
 		"label,日本語",
 	)
-	widths := []int{listIDWidth, listStatusWidth, listPriorityWidth, listTitleWidth, listLabelsWidth}
+	widths := []int{layout.idWidth, layout.statusWidth, layout.priorityWidth, layout.titleWidth, layout.labelsWidth}
 	cols, ok := splitListRowColumnsByWidth(row, widths)
 	if !ok {
 		t.Fatalf("row should match fixed-width layout, row=%q", row)
@@ -237,7 +249,11 @@ func TestListExcludesDoneAndArchivedByDefaultAndSupportsStatusFilters(t *testing
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("list default error: %v", err)
 	}
-	if !strings.Contains(out.String(), formatIssueListRow("ID", "STATUS", "PRIORITY", "TITLE", "LABELS")) {
+	defaultLayout := issueListLayoutForItems([]issue.Item{
+		{Status: issue.StatusTodo, Priority: "p2"},
+		{Status: issue.StatusReady, Priority: "p2"},
+	})
+	if !strings.Contains(out.String(), formatIssueListRowWithLayout(defaultLayout, "ID", "STATUS", "PRIORITY", "TITLE", "LABELS")) {
 		t.Fatalf("default list should include header, got: %q", out.String())
 	}
 	if !strings.Contains(out.String(), todoIssue.ID) || !strings.Contains(out.String(), readyIssue.ID) {
@@ -262,7 +278,10 @@ func TestListExcludesDoneAndArchivedByDefaultAndSupportsStatusFilters(t *testing
 	if len(lines) != 2 {
 		t.Fatalf("--status archived should include header + one row: %q", out.String())
 	}
-	if lines[0] != formatIssueListRow("ID", "STATUS", "PRIORITY", "TITLE", "LABELS") || !strings.Contains(lines[1], archivedIssue.ID) {
+	archivedLayout := issueListLayoutForItems([]issue.Item{
+		{Status: issue.StatusArchived, Priority: "p2"},
+	})
+	if lines[0] != formatIssueListRowWithLayout(archivedLayout, "ID", "STATUS", "PRIORITY", "TITLE", "LABELS") || !strings.Contains(lines[1], archivedIssue.ID) {
 		t.Fatalf("--status archived should include only archived: %q", out.String())
 	}
 
@@ -495,8 +514,79 @@ func TestStatusCommandAndCustomStatusFlow(t *testing.T) {
 	if err := listCmd.Execute(); err != nil {
 		t.Fatalf("list custom status error: %v", err)
 	}
-	if !strings.Contains(out.String(), formatIssueListRow(it.ID, "blocked", "none", "blocked issue", "")) {
+	layout := issueListLayoutForItems([]issue.Item{
+		{Status: "blocked", Priority: "none"},
+	})
+	if !strings.Contains(out.String(), formatIssueListRowWithLayout(layout, it.ID, "blocked", "none", "blocked issue", "")) {
 		t.Fatalf("list should include custom status issue: %q", out.String())
+	}
+}
+
+func TestListShowsFullStatusAndPriorityWithAlignedColumns(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TRACK_HOME", tmp)
+
+	ctx := context.Background()
+	store, err := sqlite.Open(ctx)
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	longStatus := "custom_status_that_is_very_long"
+	if err := store.AddStatus(ctx, longStatus); err != nil {
+		t.Fatalf("AddStatus() error: %v", err)
+	}
+
+	_, err = store.CreateIssue(ctx, issue.Item{
+		Title:    strings.Repeat("title-", 20),
+		Status:   longStatus,
+		Priority: "none",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue() error: %v", err)
+	}
+
+	cmd := newListCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"--status", longStatus, "--sort", "manual"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("cmd.Execute() error: %v", err)
+	}
+
+	lines := strings.Split(strings.TrimRight(out.String(), "\n"), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("len(lines) = %d, want 2; out=%q", len(lines), out.String())
+	}
+
+	layout := issueListLayoutForItems([]issue.Item{
+		{Status: longStatus, Priority: "none"},
+	})
+	if lines[0] != formatIssueListRowWithLayout(layout, "ID", "STATUS", "PRIORITY", "TITLE", "LABELS") {
+		t.Fatalf("unexpected header: %q", lines[0])
+	}
+
+	widths := []int{layout.idWidth, layout.statusWidth, layout.priorityWidth, layout.titleWidth, layout.labelsWidth}
+	cols, ok := splitListRowColumnsByWidth(lines[1], widths)
+	if !ok {
+		t.Fatalf("row should match layout widths, row=%q", lines[1])
+	}
+	if got := strings.TrimRight(cols[1], " "); got != longStatus {
+		t.Fatalf("status should not be truncated: got=%q want=%q", got, longStatus)
+	}
+	if got := strings.TrimRight(cols[2], " "); got != "none" {
+		t.Fatalf("priority should remain full text: got=%q", got)
+	}
+	if strings.Contains(cols[1], "...") || strings.Contains(cols[2], "...") {
+		t.Fatalf("status/priority should not include ellipsis: row=%q", lines[1])
+	}
+	if !strings.HasSuffix(strings.TrimRight(cols[3], " "), "...") {
+		t.Fatalf("title should preserve truncation behavior: %q", cols[3])
+	}
+	if listDisplayWidth(lines[0]) != listDisplayWidth(lines[1]) {
+		t.Fatalf("header and row should have equal display width: header=%d row=%d", listDisplayWidth(lines[0]), listDisplayWidth(lines[1]))
 	}
 }
 
