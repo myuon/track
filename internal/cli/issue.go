@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strconv"
@@ -223,12 +224,21 @@ func newNewCmd() *cobra.Command {
 		priority string
 		due      string
 		assignee string
+		tui      bool
 	)
 
 	cmd := &cobra.Command{
-		Use:   "new <title>",
+		Use:   "new [title]",
 		Short: "Create an issue",
-		Args:  cobra.ExactArgs(1),
+		Args: func(cmd *cobra.Command, args []string) error {
+			if tui {
+				if len(args) > 1 {
+					return cobra.MaximumNArgs(1)(cmd, args)
+				}
+				return nil
+			}
+			return cobra.ExactArgs(1)(cmd, args)
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := context.Background()
 			store, err := sqlite.Open(ctx)
@@ -237,22 +247,33 @@ func newNewCmd() *cobra.Command {
 			}
 			defer store.Close()
 
-			if err := issue.ValidatePriority(priority); err != nil {
-				return err
-			}
-			if err := issue.ValidateDue(due); err != nil {
-				return err
-			}
-
-			item, err := store.CreateIssue(ctx, issue.Item{
-				Title:    args[0],
-				Status:   issue.StatusTodo,
+			in := newIssueInput{
+				Body:     body,
 				Priority: priority,
-				Assignee: issue.NormalizeAssignee(assignee),
+				Assignee: assignee,
 				Due:      due,
 				Labels:   labels,
-				Body:     body,
-			})
+			}
+			if len(args) > 0 {
+				in.Title = args[0]
+			}
+			if tui {
+				initialTitle := ""
+				if len(args) > 0 {
+					initialTitle = args[0]
+				}
+				prompted, cancelled, err := promptNewIssueInput(cmd.InOrStdin(), cmd.OutOrStdout(), initialTitle)
+				if err != nil {
+					return err
+				}
+				if cancelled {
+					fmt.Fprintln(cmd.OutOrStdout(), "cancelled")
+					return nil
+				}
+				in = prompted
+			}
+
+			item, err := createIssueFromInput(ctx, store, in)
 			if err != nil {
 				return err
 			}
@@ -270,8 +291,154 @@ func newNewCmd() *cobra.Command {
 	cmd.Flags().StringVar(&priority, "priority", "none", "Priority (none|p0|p1|p2|p3)")
 	cmd.Flags().StringVar(&due, "due", "", "Due date (YYYY-MM-DD)")
 	cmd.Flags().StringVar(&assignee, "assignee", "", "Assignee")
+	cmd.Flags().BoolVar(&tui, "tui", false, "Create issue with interactive prompts")
 
 	return cmd
+}
+
+type newIssueInput struct {
+	Title    string
+	Body     string
+	Priority string
+	Assignee string
+	Due      string
+	Labels   []string
+}
+
+func createIssueFromInput(ctx context.Context, store *sqlite.Store, in newIssueInput) (issue.Item, error) {
+	if err := issue.ValidateTitle(in.Title); err != nil {
+		return issue.Item{}, err
+	}
+	if err := issue.ValidatePriority(in.Priority); err != nil {
+		return issue.Item{}, err
+	}
+	if err := issue.ValidateDue(in.Due); err != nil {
+		return issue.Item{}, err
+	}
+
+	return store.CreateIssue(ctx, issue.Item{
+		Title:    in.Title,
+		Status:   issue.StatusTodo,
+		Priority: in.Priority,
+		Assignee: issue.NormalizeAssignee(in.Assignee),
+		Due:      in.Due,
+		Labels:   in.Labels,
+		Body:     in.Body,
+	})
+}
+
+func promptNewIssueInput(in io.Reader, out io.Writer, initialTitle string) (newIssueInput, bool, error) {
+	reader := bufio.NewReader(in)
+
+	title := strings.TrimSpace(initialTitle)
+	for {
+		if title == "" {
+			v, err := readPromptLine(reader, out, "title: ")
+			if err != nil {
+				return newIssueInput{}, false, err
+			}
+			title = strings.TrimSpace(v)
+		}
+		if err := issue.ValidateTitle(title); err != nil {
+			fmt.Fprintln(out, err)
+			title = ""
+			continue
+		}
+		break
+	}
+
+	body, err := readPromptLine(reader, out, "body: ")
+	if err != nil {
+		return newIssueInput{}, false, err
+	}
+
+	var priority string
+	for {
+		v, err := readPromptLine(reader, out, "priority (none|p0|p1|p2|p3) [none]: ")
+		if err != nil {
+			return newIssueInput{}, false, err
+		}
+		v = strings.TrimSpace(v)
+		if v == "" {
+			v = "none"
+		}
+		if err := issue.ValidatePriority(v); err != nil {
+			fmt.Fprintln(out, err)
+			continue
+		}
+		priority = v
+		break
+	}
+
+	labelsLine, err := readPromptLine(reader, out, "labels (comma separated): ")
+	if err != nil {
+		return newIssueInput{}, false, err
+	}
+	assignee, err := readPromptLine(reader, out, "assignee: ")
+	if err != nil {
+		return newIssueInput{}, false, err
+	}
+
+	var due string
+	for {
+		v, err := readPromptLine(reader, out, "due (YYYY-MM-DD): ")
+		if err != nil {
+			return newIssueInput{}, false, err
+		}
+		v = strings.TrimSpace(v)
+		if err := issue.ValidateDue(v); err != nil {
+			fmt.Fprintln(out, err)
+			continue
+		}
+		due = v
+		break
+	}
+
+	confirm, err := readPromptLine(reader, out, "confirm create? [y/N]: ")
+	if err != nil {
+		return newIssueInput{}, false, err
+	}
+	confirmed := strings.EqualFold(strings.TrimSpace(confirm), "y") || strings.EqualFold(strings.TrimSpace(confirm), "yes")
+	if !confirmed {
+		return newIssueInput{}, true, nil
+	}
+
+	return newIssueInput{
+		Title:    title,
+		Body:     strings.TrimSpace(body),
+		Priority: priority,
+		Assignee: strings.TrimSpace(assignee),
+		Due:      due,
+		Labels:   parseCommaSeparatedLabels(labelsLine),
+	}, false, nil
+}
+
+func readPromptLine(reader *bufio.Reader, out io.Writer, prompt string) (string, error) {
+	fmt.Fprint(out, prompt)
+	line, err := reader.ReadString('\n')
+	if err != nil {
+		if err == io.EOF && len(line) > 0 {
+			return line, nil
+		}
+		if err == io.EOF {
+			return "", fmt.Errorf("input ended before prompt completion")
+		}
+		return "", err
+	}
+	return line, nil
+}
+
+func parseCommaSeparatedLabels(v string) []string {
+	parts := strings.Split(v, ",")
+	labels := make([]string, 0, len(parts))
+	for _, p := range parts {
+		label := strings.TrimSpace(p)
+		if label == "" {
+			continue
+		}
+		labels = append(labels, label)
+	}
+	return labels
 }
 
 func newListCmd() *cobra.Command {

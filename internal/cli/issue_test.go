@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -367,6 +368,165 @@ func TestNewDefaultsPriorityToNone(t *testing.T) {
 	if got.Priority != "none" {
 		t.Fatalf("priority = %q, want none", got.Priority)
 	}
+}
+
+func TestNewTUICreatesIssue(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TRACK_HOME", tmp)
+
+	cmd := newNewCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetIn(strings.NewReader(strings.Join([]string{
+		"new from tui",
+		"body line",
+		"p1",
+		"ui, cli",
+		"alice",
+		"2026-02-28",
+		"y",
+	}, "\n") + "\n"))
+	cmd.SetArgs([]string{"--tui"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("new --tui command error: %v", err)
+	}
+
+	issueID := mustFindIssueID(t, out.String())
+	ctx := context.Background()
+	store, err := sqlite.Open(ctx)
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	got, err := store.GetIssue(ctx, issueID)
+	if err != nil {
+		t.Fatalf("GetIssue() error: %v", err)
+	}
+	if got.Title != "new from tui" {
+		t.Fatalf("title = %q, want %q", got.Title, "new from tui")
+	}
+	if got.Body != "body line" {
+		t.Fatalf("body = %q, want %q", got.Body, "body line")
+	}
+	if got.Priority != "p1" {
+		t.Fatalf("priority = %q, want %q", got.Priority, "p1")
+	}
+	if got.Assignee != "alice" {
+		t.Fatalf("assignee = %q, want %q", got.Assignee, "alice")
+	}
+	if got.Due != "2026-02-28" {
+		t.Fatalf("due = %q, want %q", got.Due, "2026-02-28")
+	}
+	if !slices.Equal(got.Labels, []string{"ui", "cli"}) {
+		t.Fatalf("labels = %v, want %v", got.Labels, []string{"ui", "cli"})
+	}
+}
+
+func TestNewTUICancelDoesNotCreate(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TRACK_HOME", tmp)
+
+	cmd := newNewCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetIn(strings.NewReader(strings.Join([]string{
+		"cancel me",
+		"body",
+		"",
+		"",
+		"",
+		"",
+		"n",
+	}, "\n") + "\n"))
+	cmd.SetArgs([]string{"--tui"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("new --tui command error: %v", err)
+	}
+
+	if !strings.Contains(out.String(), "cancelled\n") {
+		t.Fatalf("output should contain cancelled, got: %q", out.String())
+	}
+	if strings.Contains(out.String(), "TRK-") {
+		t.Fatalf("cancel flow should not print issue id, got: %q", out.String())
+	}
+
+	ctx := context.Background()
+	store, err := sqlite.Open(ctx)
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	items, err := store.ListIssues(ctx, sqlite.ListFilter{Sort: "manual"})
+	if err != nil {
+		t.Fatalf("ListIssues() error: %v", err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("len(items) = %d, want 0", len(items))
+	}
+}
+
+func TestNewTUIRePromptsOnInvalidPriorityAndDue(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TRACK_HOME", tmp)
+
+	cmd := newNewCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetIn(strings.NewReader(strings.Join([]string{
+		"retry flow",
+		"body",
+		"p9",
+		"p2",
+		"tui",
+		"bob",
+		"2026/02/20",
+		"2026-02-20",
+		"y",
+	}, "\n") + "\n"))
+	cmd.SetArgs([]string{"--tui"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("new --tui command error: %v", err)
+	}
+
+	if !strings.Contains(out.String(), "invalid priority: p9") {
+		t.Fatalf("output should contain invalid priority message, got: %q", out.String())
+	}
+	if !strings.Contains(out.String(), "invalid due date (YYYY-MM-DD): 2026/02/20") {
+		t.Fatalf("output should contain invalid due message, got: %q", out.String())
+	}
+
+	issueID := mustFindIssueID(t, out.String())
+	ctx := context.Background()
+	store, err := sqlite.Open(ctx)
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	got, err := store.GetIssue(ctx, issueID)
+	if err != nil {
+		t.Fatalf("GetIssue() error: %v", err)
+	}
+	if got.Priority != "p2" {
+		t.Fatalf("priority = %q, want %q", got.Priority, "p2")
+	}
+	if got.Due != "2026-02-20" {
+		t.Fatalf("due = %q, want %q", got.Due, "2026-02-20")
+	}
+}
+
+func mustFindIssueID(t *testing.T, output string) string {
+	t.Helper()
+	m := regexp.MustCompile(`TRK-\d+`).FindString(output)
+	if m == "" {
+		t.Fatalf("issue id not found in output: %q", output)
+	}
+	return m
 }
 
 func TestSetSupportsNextAction(t *testing.T) {
