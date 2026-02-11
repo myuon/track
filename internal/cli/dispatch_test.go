@@ -112,7 +112,7 @@ func TestDispatchSuccessSetsDoneAndRunsSequence(t *testing.T) {
 					t.Fatalf("WriteFile() error: %v", err)
 				}
 			}},
-			{interactive: true, dir: worktreeDir, name: runnerScript, args: []string{"execution", issueID}},
+			{interactive: true, dir: worktreeDir, name: runnerScript, args: []string{"--sandbox", "danger-full-access", "execution", issueID}},
 			{dir: worktreeDir, name: "git", args: []string{"status", "--porcelain"}, output: ""},
 			{dir: worktreeDir, name: "git", args: []string{"rev-list", "--count", "main..HEAD"}, output: "1\n"},
 			{dir: worktreeDir, name: "git", args: []string{"push", "-u", "origin", "codex/trk-1"}, output: ""},
@@ -173,7 +173,7 @@ func TestDispatchNoMergeLeavesFinished(t *testing.T) {
 		t: t,
 		expected: []dispatchExpectedCommand{
 			{dir: repoRoot, name: "git", args: []string{"rev-parse", "--show-toplevel"}, output: repoRoot},
-			{interactive: true, dir: worktreeDir, name: runnerScript, args: []string{"execution", issueID}},
+			{interactive: true, dir: worktreeDir, name: runnerScript, args: []string{"--sandbox", "danger-full-access", "execution", issueID}},
 			{dir: worktreeDir, name: "git", args: []string{"status", "--porcelain"}, output: ""},
 			{dir: worktreeDir, name: "git", args: []string{"rev-list", "--count", "main..HEAD"}, output: "1"},
 			{dir: worktreeDir, name: "git", args: []string{"push", "-u", "origin", "codex/trk-1"}, output: ""},
@@ -225,7 +225,7 @@ func TestDispatchCIFailureStopsAtFinished(t *testing.T) {
 		t: t,
 		expected: []dispatchExpectedCommand{
 			{dir: repoRoot, name: "git", args: []string{"rev-parse", "--show-toplevel"}, output: repoRoot},
-			{interactive: true, dir: worktreeDir, name: runnerScript, args: []string{"execution", issueID}},
+			{interactive: true, dir: worktreeDir, name: runnerScript, args: []string{"--sandbox", "danger-full-access", "execution", issueID}},
 			{dir: worktreeDir, name: "git", args: []string{"status", "--porcelain"}, output: ""},
 			{dir: worktreeDir, name: "git", args: []string{"rev-list", "--count", "main..HEAD"}, output: "1"},
 			{dir: worktreeDir, name: "git", args: []string{"push", "-u", "origin", "codex/trk-1"}, output: ""},
@@ -280,7 +280,7 @@ func TestDispatchMergeMethodSquash(t *testing.T) {
 		t: t,
 		expected: []dispatchExpectedCommand{
 			{dir: repoRoot, name: "git", args: []string{"rev-parse", "--show-toplevel"}, output: repoRoot},
-			{interactive: true, dir: worktreeDir, name: runnerScript, args: []string{"execution", issueID}},
+			{interactive: true, dir: worktreeDir, name: runnerScript, args: []string{"--sandbox", "danger-full-access", "execution", issueID}},
 			{dir: worktreeDir, name: "git", args: []string{"status", "--porcelain"}, output: ""},
 			{dir: worktreeDir, name: "git", args: []string{"rev-list", "--count", "main..HEAD"}, output: "1"},
 			{dir: worktreeDir, name: "git", args: []string{"push", "-u", "origin", "codex/trk-1"}, output: ""},
@@ -325,7 +325,7 @@ func TestDispatchNoChangesSkipsPRAndKeepsInProgress(t *testing.T) {
 		t: t,
 		expected: []dispatchExpectedCommand{
 			{dir: repoRoot, name: "git", args: []string{"rev-parse", "--show-toplevel"}, output: repoRoot},
-			{interactive: true, dir: worktreeDir, name: runnerScript, args: []string{"execution", issueID}},
+			{interactive: true, dir: worktreeDir, name: runnerScript, args: []string{"--sandbox", "danger-full-access", "execution", issueID}},
 			{dir: worktreeDir, name: "git", args: []string{"status", "--porcelain"}, output: ""},
 			{dir: worktreeDir, name: "git", args: []string{"rev-list", "--count", "main..HEAD"}, output: "0"},
 		},

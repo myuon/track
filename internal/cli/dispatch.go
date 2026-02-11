@@ -195,7 +195,18 @@ func runDispatch(
 		if _, err := os.Stat(runnerCmd); err != nil {
 			runnerCmd = "exec_" + opts.Runner
 		}
-		return runner.RunInteractive(ctx, worktreeDir, stdin, stdout, stderr, runnerCmd, opts.Mode, issueID)
+		return runner.RunInteractive(
+			ctx,
+			worktreeDir,
+			stdin,
+			stdout,
+			stderr,
+			runnerCmd,
+			"--sandbox",
+			"danger-full-access",
+			opts.Mode,
+			issueID,
+		)
 	}); err != nil {
 		return err
 	}
