@@ -38,6 +38,7 @@ func newRootCmd() *cobra.Command {
 	cmd.AddCommand(newDispatchCmd())
 	cmd.AddCommand(newUICmd())
 	cmd.AddCommand(newProjectCmd())
+	cmd.AddCommand(newAPICmd())
 
 	return cmd
 }
