@@ -877,6 +877,7 @@ func newNextCmd() *cobra.Command {
 func newPlanningCmd() *cobra.Command {
 	var limit int
 	var yes bool
+	var dryRun bool
 
 	cmd := &cobra.Command{
 		Use:   "planning [id]",
@@ -916,10 +917,23 @@ func newPlanningCmd() *cobra.Command {
 				items = items[:limit]
 			}
 
+			out := cmd.OutOrStdout()
+			if dryRun {
+				for _, it := range items {
+					fmt.Fprintf(out, "%s\t%s\t%s\n", it.ID, it.Status, it.Title)
+				}
+				fmt.Fprintf(out, "dry-run: %d issues\n", len(items))
+				return nil
+			}
+
 			updatedCount := 0
 			skippedCount := 0
-			out := cmd.OutOrStdout()
 			reader := bufio.NewReader(cmd.InOrStdin())
+
+			if yes {
+				fmt.Fprintln(out, "auto-approve enabled (--yes)")
+				fmt.Fprintf(out, "targets: %d\n", len(items))
+			}
 
 			for _, it := range items {
 				if it.Status != issue.StatusTodo {
@@ -966,6 +980,7 @@ func newPlanningCmd() *cobra.Command {
 
 	cmd.Flags().IntVar(&limit, "limit", 0, "Limit number of issues to process")
 	cmd.Flags().BoolVar(&yes, "yes", false, "Skip confirmation prompts and run planning for each target issue")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Preview planning targets without running sessions")
 	return cmd
 }
 

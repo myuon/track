@@ -1408,6 +1408,164 @@ func TestPlanningYesSkipsConfirmationPrompt(t *testing.T) {
 	if strings.Contains(out.String(), "start planning "+it.ID+"? [y/N]: ") {
 		t.Fatalf("--yes should skip confirmation prompt, got: %q", out.String())
 	}
+	if !strings.Contains(out.String(), "auto-approve enabled (--yes)\n") {
+		t.Fatalf("expected yes preflight banner, got: %q", out.String())
+	}
+	if !strings.Contains(out.String(), "targets: 1\n") {
+		t.Fatalf("expected yes target count, got: %q", out.String())
+	}
+	if !strings.Contains(out.String(), "planning session start: "+it.ID+"\n") {
+		t.Fatalf("expected planning session start output, got: %q", out.String())
+	}
+	if !strings.Contains(out.String(), "updated: 0, skipped: 1\n") {
+		t.Fatalf("expected summary output, got: %q", out.String())
+	}
+}
+
+func TestPlanningDryRunPrintsTargetsAndDoesNotRunSession(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TRACK_HOME", tmp)
+
+	ctx := context.Background()
+	store, err := sqlite.Open(ctx)
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	first, err := store.CreateIssue(ctx, issue.Item{Title: "first", Status: issue.StatusTodo, Priority: "none", Assignee: "agent"})
+	if err != nil {
+		t.Fatalf("CreateIssue(first) error: %v", err)
+	}
+	second, err := store.CreateIssue(ctx, issue.Item{Title: "second", Status: issue.StatusTodo, Priority: "none", Assignee: "agent"})
+	if err != nil {
+		t.Fatalf("CreateIssue(second) error: %v", err)
+	}
+
+	origRunner := planningSessionRunner
+	t.Cleanup(func() { planningSessionRunner = origRunner })
+	called := false
+	planningSessionRunner = func(_ context.Context, _ *cobra.Command, _ string) error {
+		called = true
+		return nil
+	}
+
+	cmd := newPlanningCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"--dry-run"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("planning dry-run error: %v", err)
+	}
+	if called {
+		t.Fatalf("planning session should not run during dry-run")
+	}
+	if !strings.Contains(out.String(), first.ID+"\t"+issue.StatusTodo+"\t"+first.Title+"\n") {
+		t.Fatalf("expected first issue in dry-run output, got: %q", out.String())
+	}
+	if !strings.Contains(out.String(), second.ID+"\t"+issue.StatusTodo+"\t"+second.Title+"\n") {
+		t.Fatalf("expected second issue in dry-run output, got: %q", out.String())
+	}
+	if !strings.Contains(out.String(), "dry-run: 2 issues\n") {
+		t.Fatalf("expected dry-run summary, got: %q", out.String())
+	}
+	if strings.Contains(out.String(), "planning session start:") {
+		t.Fatalf("dry-run should not print execution logs, got: %q", out.String())
+	}
+}
+
+func TestPlanningDryRunWithYesSkipsExecutionLogs(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TRACK_HOME", tmp)
+
+	ctx := context.Background()
+	store, err := sqlite.Open(ctx)
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	it, err := store.CreateIssue(ctx, issue.Item{Title: "todo", Status: issue.StatusTodo, Priority: "none", Assignee: "agent"})
+	if err != nil {
+		t.Fatalf("CreateIssue() error: %v", err)
+	}
+
+	origRunner := planningSessionRunner
+	t.Cleanup(func() { planningSessionRunner = origRunner })
+	called := false
+	planningSessionRunner = func(_ context.Context, _ *cobra.Command, _ string) error {
+		called = true
+		return nil
+	}
+
+	cmd := newPlanningCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"--dry-run", "--yes"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("planning dry-run --yes error: %v", err)
+	}
+	if called {
+		t.Fatalf("planning session should not run during dry-run --yes")
+	}
+	if !strings.Contains(out.String(), "dry-run: 1 issues\n") {
+		t.Fatalf("expected dry-run summary, got: %q", out.String())
+	}
+	if strings.Contains(out.String(), "auto-approve enabled (--yes)\n") {
+		t.Fatalf("dry-run output should not include yes execution banner, got: %q", out.String())
+	}
+	if strings.Contains(out.String(), "planning session start: "+it.ID+"\n") {
+		t.Fatalf("dry-run output should not include execution logs, got: %q", out.String())
+	}
+}
+
+func TestPlanningDryRunRespectsLimit(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TRACK_HOME", tmp)
+
+	ctx := context.Background()
+	store, err := sqlite.Open(ctx)
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	first, err := store.CreateIssue(ctx, issue.Item{Title: "first", Status: issue.StatusTodo, Priority: "none", Assignee: "agent"})
+	if err != nil {
+		t.Fatalf("CreateIssue(first) error: %v", err)
+	}
+	second, err := store.CreateIssue(ctx, issue.Item{Title: "second", Status: issue.StatusTodo, Priority: "none", Assignee: "agent"})
+	if err != nil {
+		t.Fatalf("CreateIssue(second) error: %v", err)
+	}
+
+	origRunner := planningSessionRunner
+	t.Cleanup(func() { planningSessionRunner = origRunner })
+	planningSessionRunner = func(_ context.Context, _ *cobra.Command, _ string) error {
+		t.Fatalf("planning session should not run during dry-run")
+		return nil
+	}
+
+	cmd := newPlanningCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"--dry-run", "--limit", "1"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("planning dry-run limit error: %v", err)
+	}
+
+	if !strings.Contains(out.String(), first.ID+"\t"+issue.StatusTodo+"\t"+first.Title+"\n") {
+		t.Fatalf("expected first issue in dry-run output, got: %q", out.String())
+	}
+	if strings.Contains(out.String(), second.ID+"\t"+issue.StatusTodo+"\t"+second.Title+"\n") {
+		t.Fatalf("expected second issue to be excluded by limit, got: %q", out.String())
+	}
+	if !strings.Contains(out.String(), "dry-run: 1 issues\n") {
+		t.Fatalf("expected dry-run limit summary, got: %q", out.String())
+	}
 }
 
 func TestReplyAppendsBodyAndAssignsBackToAgentWithFlag(t *testing.T) {
