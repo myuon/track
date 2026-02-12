@@ -302,6 +302,57 @@ func TestListExcludesDoneAndArchivedByDefaultAndSupportsStatusFilters(t *testing
 	}
 }
 
+func TestListDefaultSortMatchesManual(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TRACK_HOME", tmp)
+
+	ctx := context.Background()
+	store, err := sqlite.Open(ctx)
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	_, _ = store.CreateIssue(ctx, issue.Item{Title: "first", Status: issue.StatusTodo, Priority: "p2"})
+	_, _ = store.CreateIssue(ctx, issue.Item{Title: "second", Status: issue.StatusTodo, Priority: "p2"})
+
+	var defaultOut bytes.Buffer
+	defaultCmd := newListCmd()
+	defaultCmd.SetOut(&defaultOut)
+	defaultCmd.SetErr(&defaultOut)
+	if err := defaultCmd.Execute(); err != nil {
+		t.Fatalf("default list error: %v", err)
+	}
+
+	var manualOut bytes.Buffer
+	manualCmd := newListCmd()
+	manualCmd.SetOut(&manualOut)
+	manualCmd.SetErr(&manualOut)
+	manualCmd.SetArgs([]string{"--sort", "manual"})
+	if err := manualCmd.Execute(); err != nil {
+		t.Fatalf("manual list error: %v", err)
+	}
+
+	if defaultOut.String() != manualOut.String() {
+		t.Fatalf("default output should match --sort manual\ndefault:\n%s\nmanual:\n%s", defaultOut.String(), manualOut.String())
+	}
+}
+
+func TestListHelpShowsManualAsDefaultSort(t *testing.T) {
+	cmd := newListCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"--help"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("list --help error: %v", err)
+	}
+	if !strings.Contains(out.String(), `(default "manual")`) {
+		t.Fatalf("help should show manual as default sort, got: %q", out.String())
+	}
+}
+
 func TestShowIncludesLinkedBranch(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("TRACK_HOME", tmp)
