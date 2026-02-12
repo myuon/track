@@ -858,7 +858,7 @@ func newNextCmd() *cobra.Command {
 
 			items, err := store.ListIssues(ctx, sqlite.ListFilter{
 				Statuses: []string{issue.StatusTodo, issue.StatusReady},
-				Sort:     "manual",
+				Sort:     "priority_manual",
 			})
 			if err != nil {
 				return err

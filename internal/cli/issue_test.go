@@ -892,14 +892,63 @@ func TestNextShowsTopActionableIssue(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 
-	a, err := store.CreateIssue(ctx, issue.Item{Title: "A", Status: issue.StatusInProgress, Priority: "p1"})
+	a, err := store.CreateIssue(ctx, issue.Item{Title: "A", Status: issue.StatusInProgress, Priority: "p0"})
 	if err != nil {
 		t.Fatalf("CreateIssue() A error: %v", err)
 	}
 	_ = a
-	b, err := store.CreateIssue(ctx, issue.Item{Title: "B", Status: issue.StatusTodo, Priority: "none"})
+	_, err = store.CreateIssue(ctx, issue.Item{Title: "B", Status: issue.StatusTodo, Priority: "none"})
 	if err != nil {
 		t.Fatalf("CreateIssue() B error: %v", err)
+	}
+	c, err := store.CreateIssue(ctx, issue.Item{Title: "C", Status: issue.StatusReady, Priority: "p0"})
+	if err != nil {
+		t.Fatalf("CreateIssue() C error: %v", err)
+	}
+
+	cmd := newNextCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("next command error: %v", err)
+	}
+
+	line := strings.TrimSpace(out.String())
+	if !strings.HasPrefix(line, c.ID+"\t") {
+		t.Fatalf("expected top-priority actionable issue %s, got: %q", c.ID, line)
+	}
+}
+
+func TestNextUsesManualOrderWithinSamePriority(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TRACK_HOME", tmp)
+
+	ctx := context.Background()
+	store, err := sqlite.Open(ctx)
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	a, err := store.CreateIssue(ctx, issue.Item{Title: "A", Status: issue.StatusTodo, Priority: "p1"})
+	if err != nil {
+		t.Fatalf("CreateIssue() A error: %v", err)
+	}
+	b, err := store.CreateIssue(ctx, issue.Item{Title: "B", Status: issue.StatusReady, Priority: "p1"})
+	if err != nil {
+		t.Fatalf("CreateIssue() B error: %v", err)
+	}
+	c, err := store.CreateIssue(ctx, issue.Item{Title: "C", Status: issue.StatusTodo, Priority: "p1"})
+	if err != nil {
+		t.Fatalf("CreateIssue() C error: %v", err)
+	}
+
+	if err := store.Reorder(ctx, c.ID, a.ID, ""); err != nil {
+		t.Fatalf("Reorder C before A error: %v", err)
+	}
+	if err := store.Reorder(ctx, b.ID, c.ID, ""); err != nil {
+		t.Fatalf("Reorder B before C error: %v", err)
 	}
 
 	cmd := newNextCmd()
@@ -912,7 +961,7 @@ func TestNextShowsTopActionableIssue(t *testing.T) {
 
 	line := strings.TrimSpace(out.String())
 	if !strings.HasPrefix(line, b.ID+"\t") {
-		t.Fatalf("expected first actionable issue %s, got: %q", b.ID, line)
+		t.Fatalf("expected first manual-queue issue %s within same priority, got: %q", b.ID, line)
 	}
 }
 

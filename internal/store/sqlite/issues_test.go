@@ -107,6 +107,44 @@ func TestListSortByPriority(t *testing.T) {
 	}
 }
 
+func TestListSortByPriorityManual(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TRACK_HOME", tmp)
+
+	ctx := context.Background()
+	store, err := Open(ctx)
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	p1a, _ := store.CreateIssue(ctx, issue.Item{Title: "p1-a", Status: issue.StatusTodo, Priority: "p1"})
+	p2, _ := store.CreateIssue(ctx, issue.Item{Title: "p2", Status: issue.StatusTodo, Priority: "p2"})
+	p1b, _ := store.CreateIssue(ctx, issue.Item{Title: "p1-b", Status: issue.StatusTodo, Priority: "p1"})
+	p0, _ := store.CreateIssue(ctx, issue.Item{Title: "p0", Status: issue.StatusTodo, Priority: "p0"})
+
+	if err := store.Reorder(ctx, p1b.ID, p1a.ID, ""); err != nil {
+		t.Fatalf("Reorder p1-b before p1-a error: %v", err)
+	}
+
+	items, err := store.ListIssues(ctx, ListFilter{Sort: "priority_manual"})
+	if err != nil {
+		t.Fatalf("ListIssues(priority_manual) error: %v", err)
+	}
+	if len(items) != 4 {
+		t.Fatalf("len(items) = %d, want 4", len(items))
+	}
+	if items[0].ID != p0.ID {
+		t.Fatalf("first ID = %s, want %s (p0 first)", items[0].ID, p0.ID)
+	}
+	if items[1].ID != p1b.ID || items[2].ID != p1a.ID {
+		t.Fatalf("p1 issues should follow manual order, got [%s %s]", items[1].ID, items[2].ID)
+	}
+	if items[3].ID != p2.ID {
+		t.Fatalf("last ID = %s, want %s", items[3].ID, p2.ID)
+	}
+}
+
 func TestListSortByUpdated(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("TRACK_HOME", tmp)
