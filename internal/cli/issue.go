@@ -876,6 +876,7 @@ func newNextCmd() *cobra.Command {
 
 func newPlanningCmd() *cobra.Command {
 	var limit int
+	var yes bool
 
 	cmd := &cobra.Command{
 		Use:   "planning [id]",
@@ -918,12 +919,26 @@ func newPlanningCmd() *cobra.Command {
 			updatedCount := 0
 			skippedCount := 0
 			out := cmd.OutOrStdout()
+			reader := bufio.NewReader(cmd.InOrStdin())
 
 			for _, it := range items {
 				if it.Status != issue.StatusTodo {
 					fmt.Fprintf(out, "%s skipped (status=%s)\n", it.ID, it.Status)
 					skippedCount++
 					continue
+				}
+
+				if !yes {
+					line, err := readPromptLine(reader, out, fmt.Sprintf("start planning %s? [y/N]: ", it.ID))
+					if err != nil {
+						return err
+					}
+					confirmed := strings.EqualFold(strings.TrimSpace(line), "y") || strings.EqualFold(strings.TrimSpace(line), "yes")
+					if !confirmed {
+						fmt.Fprintf(out, "%s skipped (confirmation declined)\n", it.ID)
+						skippedCount++
+						continue
+					}
 				}
 
 				fmt.Fprintf(out, "planning session start: %s\n", it.ID)
@@ -950,6 +965,7 @@ func newPlanningCmd() *cobra.Command {
 	}
 
 	cmd.Flags().IntVar(&limit, "limit", 0, "Limit number of issues to process")
+	cmd.Flags().BoolVar(&yes, "yes", false, "Skip confirmation prompts and run planning for each target issue")
 	return cmd
 }
 

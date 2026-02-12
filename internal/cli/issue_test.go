@@ -1154,7 +1154,7 @@ func TestPlanningInteractiveUpdatesAndSkipsWithLimit(t *testing.T) {
 	var out bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&out)
-	cmd.SetArgs([]string{"--limit", "2"})
+	cmd.SetArgs([]string{"--yes", "--limit", "2"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("planning command error: %v", err)
 	}
@@ -1217,7 +1217,7 @@ func TestPlanningByIDTargetsOnlySpecifiedIssue(t *testing.T) {
 	var out bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&out)
-	cmd.SetArgs([]string{second.ID})
+	cmd.SetArgs([]string{second.ID, "--yes"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("planning by id error: %v", err)
 	}
@@ -1272,6 +1272,7 @@ func TestPlanningDefaultTargetsOnlyTodoAssignedToAgent(t *testing.T) {
 	var out bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"--yes"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("planning command error: %v", err)
 	}
@@ -1309,7 +1310,7 @@ func TestPlanningSkipsNonTodoIssue(t *testing.T) {
 	var out bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&out)
-	cmd.SetArgs([]string{it.ID})
+	cmd.SetArgs([]string{it.ID, "--yes"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("planning non-todo error: %v", err)
 	}
@@ -1321,6 +1322,91 @@ func TestPlanningSkipsNonTodoIssue(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "updated: 0, skipped: 1\n") {
 		t.Fatalf("expected summary, got: %q", out.String())
+	}
+}
+
+func TestPlanningPromptsAndSkipsWhenDeclined(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TRACK_HOME", tmp)
+
+	ctx := context.Background()
+	store, err := sqlite.Open(ctx)
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	it, err := store.CreateIssue(ctx, issue.Item{Title: "todo", Status: issue.StatusTodo, Priority: "none", Assignee: "agent"})
+	if err != nil {
+		t.Fatalf("CreateIssue() error: %v", err)
+	}
+
+	origRunner := planningSessionRunner
+	t.Cleanup(func() { planningSessionRunner = origRunner })
+	called := false
+	planningSessionRunner = func(_ context.Context, _ *cobra.Command, _ string) error {
+		called = true
+		return nil
+	}
+
+	cmd := newPlanningCmd()
+	var out bytes.Buffer
+	cmd.SetIn(strings.NewReader("n\n"))
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("planning command error: %v", err)
+	}
+	if called {
+		t.Fatalf("planning session should not run when confirmation is declined")
+	}
+	if !strings.Contains(out.String(), "start planning "+it.ID+"? [y/N]: ") {
+		t.Fatalf("expected confirmation prompt, got: %q", out.String())
+	}
+	if !strings.Contains(out.String(), it.ID+" skipped (confirmation declined)\n") {
+		t.Fatalf("expected confirmation skip message, got: %q", out.String())
+	}
+	if !strings.Contains(out.String(), "updated: 0, skipped: 1\n") {
+		t.Fatalf("expected summary, got: %q", out.String())
+	}
+}
+
+func TestPlanningYesSkipsConfirmationPrompt(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TRACK_HOME", tmp)
+
+	ctx := context.Background()
+	store, err := sqlite.Open(ctx)
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	it, err := store.CreateIssue(ctx, issue.Item{Title: "todo", Status: issue.StatusTodo, Priority: "none", Assignee: "agent"})
+	if err != nil {
+		t.Fatalf("CreateIssue() error: %v", err)
+	}
+
+	origRunner := planningSessionRunner
+	t.Cleanup(func() { planningSessionRunner = origRunner })
+	planningSessionRunner = func(_ context.Context, _ *cobra.Command, issueID string) error {
+		if issueID != it.ID {
+			t.Fatalf("planned issueID = %q, want %q", issueID, it.ID)
+		}
+		return nil
+	}
+
+	cmd := newPlanningCmd()
+	var out bytes.Buffer
+	cmd.SetIn(strings.NewReader("n\n"))
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"--yes"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("planning command error: %v", err)
+	}
+	if strings.Contains(out.String(), "start planning "+it.ID+"? [y/N]: ") {
+		t.Fatalf("--yes should skip confirmation prompt, got: %q", out.String())
 	}
 }
 
