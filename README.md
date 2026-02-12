@@ -139,6 +139,39 @@ export TRACK_HOME=$(mktemp -d)
 ./track hook add issue.completed --run "/bin/sh -c 'echo done:$TRACK_ISSUE_ID'"
 ```
 
+### Auto organize on `issue.created`
+
+Register repository hook:
+
+```bash
+./track hook add issue.created \
+  --run "./scripts/hooks/auto-organize-on-created.sh" \
+  --cwd "$(pwd)"
+```
+
+Re-register safely (remove duplicates first):
+
+```bash
+./track hook list | awk -F'\t' '$2=="issue.created" && $3=="./scripts/hooks/auto-organize-on-created.sh" {print $1}' \
+  | xargs -r -n1 ./track hook rm
+./track hook add issue.created --run "./scripts/hooks/auto-organize-on-created.sh" --cwd "$(pwd)"
+```
+
+Isolated verification (`TRACK_HOME=$(mktemp -d)`):
+
+```bash
+export TRACK_HOME=$(mktemp -d)
+./track hook add issue.created --run "./scripts/hooks/auto-organize-on-created.sh" --cwd "$(pwd)"
+id=$(./track new "hook test")
+./track show "$id"
+```
+
+Expected behavior:
+- `status != todo`: no-op
+- missing `assignee`: set to `agent`
+- missing `next_action`: set to `planning: refine spec and decide ready/user`
+- existing `assignee` / `next_action`: kept as-is
+
 ## Development
 
 ```bash
