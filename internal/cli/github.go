@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	appconfig "github.com/myuon/track/internal/config"
 	"github.com/myuon/track/internal/hooks"
 	"github.com/myuon/track/internal/issue"
 	"github.com/myuon/track/internal/store/sqlite"
@@ -32,16 +33,140 @@ type ghCheck struct {
 	Link  string `json:"link"`
 }
 
+type ghIssueCreateResponse struct {
+	Number int    `json:"number"`
+	URL    string `json:"url"`
+}
+
 func newGitHubCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "gh",
 		Short: "GitHub integration",
 	}
+	cmd.AddCommand(newGHIssueCmd())
 	cmd.AddCommand(newGHLinkCmd())
 	cmd.AddCommand(newGHStatusCmd())
 	cmd.AddCommand(newGHWatchCmd())
 	cmd.AddCommand(newGHAutoMergeCmd())
 	return cmd
+}
+
+func newGHIssueCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "issue",
+		Short: "GitHub issue integration",
+	}
+	cmd.AddCommand(newGHIssueCreateCmd())
+	return cmd
+}
+
+func newGHIssueCreateCmd() *cobra.Command {
+	var repoOverride string
+	var dryRun bool
+
+	cmd := &cobra.Command{
+		Use:   "create <issue_id>",
+		Short: "Create GitHub issue from track issue",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := context.Background()
+			store, err := sqlite.Open(ctx)
+			if err != nil {
+				return err
+			}
+			defer store.Close()
+
+			issueID := normalizeIssueIDArg(args[0])
+			it, err := store.GetIssue(ctx, issueID)
+			if err != nil {
+				return err
+			}
+
+			resolvedRepo, err := resolveGitHubRepo(repoOverride)
+			if err != nil {
+				return err
+			}
+			body := formatGitHubIssueBody(it)
+
+			if dryRun {
+				fmt.Fprintf(cmd.OutOrStdout(), "issue: %s\n", issueID)
+				fmt.Fprintf(cmd.OutOrStdout(), "title: %s\n", it.Title)
+				fmt.Fprintf(cmd.OutOrStdout(), "repo: %s\n", resolvedRepo)
+				fmt.Fprintf(cmd.OutOrStdout(), "labels: %s\n", strings.Join(it.Labels, ","))
+				fmt.Fprintln(cmd.OutOrStdout(), "body:")
+				fmt.Fprintln(cmd.OutOrStdout(), body)
+				return nil
+			}
+			if _, err := exec.LookPath("gh"); err != nil {
+				return fmt.Errorf("gh command is required")
+			}
+
+			argsCreate := []string{"issue", "create", "--title", it.Title, "--body", body}
+			if resolvedRepo != "" {
+				argsCreate = append(argsCreate, "--repo", resolvedRepo)
+			}
+			for _, label := range it.Labels {
+				argsCreate = append(argsCreate, "--label", label)
+			}
+			argsCreate = append(argsCreate, "--json", "number,url")
+
+			raw, err := exec.CommandContext(ctx, "gh", argsCreate...).CombinedOutput()
+			if err != nil {
+				msg := strings.TrimSpace(string(raw))
+				if msg == "" {
+					msg = err.Error()
+				}
+				return fmt.Errorf("gh issue create failed: %s", msg)
+			}
+
+			var res ghIssueCreateResponse
+			if err := json.Unmarshal(raw, &res); err != nil {
+				return fmt.Errorf("decode gh issue create response: %w", err)
+			}
+			if res.Number == 0 || strings.TrimSpace(res.URL) == "" {
+				return fmt.Errorf("gh issue create returned incomplete response")
+			}
+
+			if err := store.UpsertGitHubIssueLink(ctx, issueID, fmt.Sprintf("%d", res.Number), res.URL, resolvedRepo); err != nil {
+				return err
+			}
+
+			fmt.Fprintf(cmd.OutOrStdout(), "issue: %s\n", issueID)
+			fmt.Fprintf(cmd.OutOrStdout(), "github_issue: %d\n", res.Number)
+			fmt.Fprintf(cmd.OutOrStdout(), "url: %s\n", res.URL)
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&repoOverride, "repo", "", "owner/name")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show payload without creating GitHub issue")
+	return cmd
+}
+
+func resolveGitHubRepo(repoOverride string) (string, error) {
+	if strings.TrimSpace(repoOverride) != "" {
+		return strings.TrimSpace(repoOverride), nil
+	}
+	cfg, err := appconfig.Load()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(cfg.GHRepo), nil
+}
+
+func formatGitHubIssueBody(it issue.Item) string {
+	lines := []string{
+		fmt.Sprintf("track id: %s", it.ID),
+		fmt.Sprintf("status: %s", it.Status),
+		fmt.Sprintf("priority: %s", it.Priority),
+	}
+	if body := strings.TrimSpace(it.Body); body != "" {
+		lines = append(lines, "", body)
+	}
+	if len(it.Labels) > 0 {
+		lines = append(lines, "", "labels: "+strings.Join(it.Labels, ", "))
+	}
+	return strings.Join(lines, "\n")
 }
 
 func newGHLinkCmd() *cobra.Command {
