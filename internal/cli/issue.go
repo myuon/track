@@ -501,7 +501,7 @@ func newListCmd() *cobra.Command {
 	cmd.Flags().StringVar(&assignee, "assignee", "", "Assignee filter")
 	cmd.Flags().StringVar(&search, "search", "", "Search text")
 	cmd.Flags().StringVar(&project, "project", "", "Project filter")
-	cmd.Flags().StringVar(&sort, "sort", "updated", "Sort by priority|due|updated|manual")
+	cmd.Flags().StringVar(&sort, "sort", "manual", "Sort by priority|due|updated|manual")
 
 	return cmd
 }

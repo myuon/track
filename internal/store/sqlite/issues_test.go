@@ -107,6 +107,43 @@ func TestListSortByPriority(t *testing.T) {
 	}
 }
 
+func TestListSortByUpdated(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TRACK_HOME", tmp)
+
+	ctx := context.Background()
+	store, err := Open(ctx)
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	first, _ := store.CreateIssue(ctx, issue.Item{Title: "first", Status: issue.StatusTodo, Priority: "p2"})
+	second, _ := store.CreateIssue(ctx, issue.Item{Title: "second", Status: issue.StatusTodo, Priority: "p2"})
+	third, _ := store.CreateIssue(ctx, issue.Item{Title: "third", Status: issue.StatusTodo, Priority: "p2"})
+
+	if _, err := store.db.ExecContext(ctx, `UPDATE issues SET updated_at=? WHERE id=?`, "2026-01-01T00:00:00Z", first.ID); err != nil {
+		t.Fatalf("set updated_at for first error: %v", err)
+	}
+	if _, err := store.db.ExecContext(ctx, `UPDATE issues SET updated_at=? WHERE id=?`, "2026-01-03T00:00:00Z", second.ID); err != nil {
+		t.Fatalf("set updated_at for second error: %v", err)
+	}
+	if _, err := store.db.ExecContext(ctx, `UPDATE issues SET updated_at=? WHERE id=?`, "2026-01-02T00:00:00Z", third.ID); err != nil {
+		t.Fatalf("set updated_at for third error: %v", err)
+	}
+
+	items, err := store.ListIssues(ctx, ListFilter{Sort: "updated"})
+	if err != nil {
+		t.Fatalf("ListIssues(updated) error: %v", err)
+	}
+	if len(items) != 3 {
+		t.Fatalf("len(items) = %d, want 3", len(items))
+	}
+	if items[0].ID != second.ID || items[1].ID != third.ID || items[2].ID != first.ID {
+		t.Fatalf("unexpected updated sort order: got [%s %s %s], want [%s %s %s]", items[0].ID, items[1].ID, items[2].ID, second.ID, third.ID, first.ID)
+	}
+}
+
 func TestListIssuesExcludeDoneAndArchived(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("TRACK_HOME", tmp)
